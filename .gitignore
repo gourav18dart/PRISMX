@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch checkpoints and large binary weights
+*.pt
+*.pth
+*.bin
+*.ckpt
+
+# Virtual environments & package builds
+venv/
+.venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE and OS configurations
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
