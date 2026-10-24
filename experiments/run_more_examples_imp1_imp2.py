@@ -18,7 +18,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data", "samples")
 SPIDER_DIR = os.path.join(BASE_DIR, "data", "spiders")
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
