@@ -6,7 +6,7 @@ Tomasz Szandała, *"Unlocking the black box of CNNs: Visualising the decision-ma
 
 ---
 
-## 🛠️ Environment Setup & Installation
+## Environment Setup & Installation
 
 All dependencies are pinned in `requirements.txt`:
 ```bash
@@ -18,7 +18,7 @@ pip install -r requirements.txt
 
 ---
 
-## 📁 Project Directory Structure
+## Project Directory Structure
 
 ```
 Project/
@@ -58,7 +58,7 @@ Project/
 
 ---
 
-## 🚀 How to Run the Experiments
+## How to Run the Experiments
 
 ### 1. Phase 1: The 3 Reproduction Experiments
 
