@@ -20,8 +20,9 @@ This repository contains the complete reproduction and novel research extensions
 8. [Interactive Custom Testing Suite](#interactive-custom-testing-suite)
 9. [Viva and Examination FAQ](#viva-and-examination-faq)
 10. [Repository Architecture](#repository-architecture)
-11. [Installation and Execution](#installation-and-execution)
-12. [Formal Submission Documents](#formal-submission-documents)
+11. [Installation, Testing, and Execution](#installation-testing-and-execution)
+12. [Formal Submission Documents & Repository Link](#formal-submission-documents--repository-link)
+13. [Identification of Modified and New Files (Source Code Breakdown)](#identification-of-modified-and-new-files-source-code-breakdown)
 
 ---
 
@@ -300,8 +301,39 @@ python custom_test_suite/run_all_custom.py
 
 ---
 
-## Formal Submission Documents
+## Formal Submission Documents & Repository Link
 
-* [RESEARCH_GAP.md](RESEARCH_GAP.md): 1-page paper-style theoretical research gap analysis.
-* [EXPERIMENTAL_RESULTS.md](EXPERIMENTAL_RESULTS.md): Full quantitative results and replication tables.
-* [AI_USAGE.md](AI_USAGE.md): Academic disclosure covering tools, standardized prompts, and human verification.
+* **Official Repository Link:** [https://github.com/gourav18dart/PRISMX.git](https://github.com/gourav18dart/PRISMX.git)
+* **Part A (Research Gap):** [RESEARCH_GAP.md](RESEARCH_GAP.md) — 1-page paper-style theoretical research gap analysis.
+* **Part B (AI Usage Disclosure):** [AI_USAGE.md](AI_USAGE.md) — Academic disclosure covering tools, standardized prompts, and human verification.
+* **Part C (Experimental Results & Comparison):** [EXPERIMENTAL_RESULTS_AND_COMPARISON.md](EXPERIMENTAL_RESULTS_AND_COMPARISON.md) — Complete report containing original paper page citations, reproduction benchmarks, supporting academic literature, before-and-after tables, and multi-domain evaluations.
+* **Extended Results Log:** [EXPERIMENTAL_RESULTS.md](EXPERIMENTAL_RESULTS.md) — Full numerical tables and replication sweeps.
+
+---
+
+## Identification of Modified and New Files (Source Code Breakdown)
+
+For academic evaluation, here is the transparent breakdown of all original, modified, and newly created files in this repository:
+
+| File / Component | Category | Purpose and Exact Code Modifications |
+| :--- | :---: | :--- |
+| **`improvements/imp1_resolve_3pca_bottleneck.py`** | **NEW** | Implements **Improvement 1**: rank-$K$ SVD feature reconstruction ($\hat{F}_K = U_K S_K V_K^T + \mu$), quantitative sweep across $K=1..30$, 3-tier Spectral Bands (Macro, Contours, Textures), and variance-weighted 3-channel projection matrix $W \in \mathbb{R}^{K \times 3}$. |
+| **`improvements/imp2_class_attentive_grad_prism.py`** | **NEW** | Implements **Improvement 2**: Pre-SVD **Dual Spatial-Channel Gradient Gating** ($\tilde{A}^k = A^k \cdot w_{ch}^k \cdot (M^c)^\gamma$), and counterfactual Contrastive cPRISM ($w_{\text{diff}} = \text{ReLU}(w_1 - w_2)$). |
+| **`src/torchprism/metadata.py`** | **NEW** | Provides dynamic ImageNet class ID resolution (`get_class_id`, `get_class_name`), eliminating fragile hardcoded numbers, and automated experiment provenance logging (`record_experiment_metadata`). |
+| **`src/torchprism/classes.json`** | **NEW** | Complete 1000-class ImageNet index dictionary. |
+| **`src/torchprism/PRISM.py`** | **MODIFIED** | Refactored Tomasz Szandała's original PRISM code into a clean, reusable PyTorch module with gradient tracking hooks and numerical stabilizers. |
+| **`experiments/exp1_faithfulness.py`** | **NEW** | Reproduction of Paper Section 3.1 & Figure 4: 5-cell canine muzzle swap and full head swap showing Top-1 classification inversion. |
+| **`experiments/exp2_interpretability.py`** | **NEW** | Reproduction of Paper Section 3.2 & Figure 6: Spider trio exclusive feature isolation (6, 15, and 21 cells). |
+| **`experiments/exp2_trains_interpretability.py`** | **NEW** | Reproduction of Paper Section 3.2 & Figure 7: Passenger Car vs. Locomotive interpretability. |
+| **`experiments/exp3_variance_analysis.py`** | **NEW** | Reproduction of Paper Section 4.1 & Figures 16/17: Scree variance distribution analysis on 2-class and 5-class sets. |
+| **`experiments/exp4_multiclass_faithfulness.py`** | **NEW** | Reproduction of Paper Figures 3 & 5: Faithfulness swapping on food items and trains. |
+| **`experiments/eval_distractor_malamute_mushroom.py`** | **NEW** | Rigorous evaluation of Paper Figure 12 Malamute + Mushroom distractor resolution using Dual Spatial-Channel Gating. |
+| **`experiments/eval_fidelity_comparison.py`** | **NEW** | Side-by-side 3-case fidelity breakdown scorecard (512 dims vs 3 PCs vs 15 PCs). |
+| **`experiments/eval_wolf_difference_revealed.py`** | **NEW** | Higher PCs residual energy heatmap revealing the hidden 43.5% variance. |
+| **`experiments/eval_multidomain_improvements.py`** | **NEW** | Multi-domain evaluation across vehicles, food items, insects, multi-animal scenes, and dense street clutter. |
+| **`tests/test_torchprism.py`** | **NEW** | Automated unit tests for SVD variance conservation, singular value monotonicity, and metadata resolution. |
+| **`tests/test_improvements.py`** | **NEW** | Automated unit tests for rank-$K$ reconstruction convergence and Dual Spatial-Channel Gating bounds. |
+| **`tests/run_tests.py`** | **NEW** | Master automated test runner (8/8 passing). |
+| **`requirements-pinned.txt`** | **NEW** | Pinned dependency lockfile (`torch==2.5.1`, `torchvision==0.20.1`, etc.) for exact cross-platform reproducibility. |
+| **`.github/workflows/ci.yml`** | **NEW** | Automated GitHub Actions CI workflow executing unit tests on Python 3.10, 3.11, and 3.12. |
+| **`run_all.py`** | **NEW** | Master end-to-end pipeline orchestrating automated unit tests and all 11 experimental benchmarks in sequence. |
