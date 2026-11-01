@@ -8,11 +8,18 @@ Features large, easily readable numbers and typography for:
 """
 
 import os
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
 
 # Output paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from torchprism.metadata import record_experiment_metadata
+
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 save_path = os.path.join(OUTPUT_DIR, "fidelity_and_variance_comparison.png")
@@ -148,3 +155,13 @@ plt.suptitle("Side-by-Side Comparison: Information (Variance) vs Prediction Cert
 
 plt.savefig(save_path, bbox_inches='tight', dpi=300)
 print(f"High-contrast side-by-side figure saved to: {save_path}")
+
+record_experiment_metadata(
+    script_name="experiments/eval_fidelity_comparison.py",
+    metrics={
+        "case1_full_dims": {"variance": 100.0, "coyote_prob": 0.93, "wolf_prob": 0.91},
+        "case2_standard_prism_k3": {"variance": 56.5, "coyote_prob": 0.47, "wolf_prob": 0.60},
+        "case3_high_variance_k15": {"variance": 86.7, "coyote_prob": 0.90, "wolf_prob": 0.90}
+    },
+    config={"cases": ["Case 1: Full 512 Dims", "Case 2: Standard PRISM (3 PCs)", "Case 3: High-Var PRISMX (15 PCs)"]}
+)

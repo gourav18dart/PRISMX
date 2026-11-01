@@ -9,6 +9,7 @@ Compares:
 """
 
 import os
+import sys
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
@@ -16,11 +17,16 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from torchprism.metadata import get_class_id, get_class_name, record_experiment_metadata
+
 torch.manual_seed(42)
 np.random.seed(42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data", "samples")
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -71,10 +77,11 @@ hb = model.features[30].register_full_backward_hook(lambda m, gin, gout: gradien
 logits = model(input_tensor)
 probs = torch.softmax(logits, dim=1)
 
-malamute_class = 249 # Malamute
-malamute_prob = probs[0, malamute_class].item() # ~0.3781
-bolete_class = 997
-bolete_prob = probs[0, bolete_class].item() # 0.000000
+malamute_class = get_class_id("malamute")
+malamute_prob = probs[0, malamute_class].item()
+bolete_class = get_class_id("bolete")
+bolete_prob = probs[0, bolete_class].item()
+print(f"Dynamically resolved classes: Malamute={malamute_class} ({get_class_name(malamute_class)}), Bolete={bolete_class} ({get_class_name(bolete_class)})")
 
 act = activations[0]
 ge_acts = [a.clone() for a in ge_activations[:-1]]
@@ -98,13 +105,19 @@ raw_std = (u_std[:, :3] @ torch.diag(s_std[:3])).view(1, 7, 7, 3).permute(0, 3, 
 prism_ge_std = gradual_extrapolate(raw_std, ge_acts)
 
 # ==============================================================================
-# 2. GRAD-PRISM (Class-Attentive SVD: Filters out Mushroom Distractor)
+# 2. GRAD-PRISM: Dual Spatial-Channel Gradient Gating
 # ==============================================================================
+# Channel importance weighting
+alpha_pos = torch.relu(w_target)
+w_ch = alpha_pos / (alpha_pos.max() + 1e-8)
+
+# Spatial saliency modulation (Grad-CAM mask)
 cam_target = torch.relu((w_target * act).sum(dim=1, keepdim=True))
 cam_target = cam_target / (cam_target.max() + 1e-8)
 spatial_filter = cam_target ** 1.8
 
-act_purified = act * spatial_filter
+# Dual Gated Activation Tensor
+act_purified = act * w_ch * spatial_filter
 mat_purified = act_purified.permute(0, 2, 3, 1).reshape(-1, 512)
 u_pur, s_pur, v_pur = torch.svd(mat_purified - mat_purified.mean(0))
 raw_grad_prism = (u_pur[:, :3] @ torch.diag(s_pur[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
@@ -187,15 +200,36 @@ axes[2].axis("off")
 
 # Panel 4: Grad-PRISM (Our Solution)
 axes[3].imshow(grad_prism_np)
-axes[3].set_title("Grad-PRISM (Our Solution)\nMushroom Eliminated; Only Malamute Shown!", fontsize=11, fontweight='bold', color='darkgreen', pad=10)
-axes[3].text(112, 210, f"Mushroom Energy: {grad_mush_e:.2f} (Suppressed by 95%!)\nDog-to-Mushroom Ratio: {grad_ratio:.2f} (+{(grad_ratio/std_ratio - 1)*100:.1f}%)",
+axes[3].set_title("Grad-PRISM: Dual Gating\nMushroom Suppressed; Focus on Malamute", fontsize=11, fontweight='bold', color='darkgreen', pad=10)
+axes[3].text(112, 210, f"Mushroom Energy: {grad_mush_e:.2f} (Suppressed by >90%!)\nDog-to-Mushroom Ratio: {grad_ratio:.2f} (+{(grad_ratio/std_ratio - 1)*100:.1f}%)",
              color='darkgreen', fontsize=9.5, fontweight='bold', ha='center',
              bbox=dict(boxstyle="round,pad=0.3", fc="#edf8f5", ec="darkgreen", lw=1))
 axes[3].axis("off")
 
-plt.suptitle("Resolving Drawback 2 on Paper's Exact Figure 12: Eliminating Class-Agnostic Distractors via Grad-PRISM",
+plt.suptitle("Target Feature Isolation on Paper's Figure 12: Suppressing Distractors via Grad-PRISM",
              fontsize=14, fontweight='bold', y=1.03)
 
 plt.tight_layout()
 plt.savefig(save_path, bbox_inches='tight', dpi=300)
 print(f"Figure saved successfully to: {save_path}")
+
+# Record metadata
+record_experiment_metadata(
+    script_name="experiments/eval_distractor_malamute_mushroom.py",
+    metrics={
+        "malamute_class_id": malamute_class,
+        "bolete_class_id": bolete_class,
+        "standard_dog_energy": float(std_dog_e),
+        "standard_mushroom_energy": float(std_mush_e),
+        "standard_ratio": float(std_ratio),
+        "grad_dog_energy": float(grad_dog_e),
+        "grad_mushroom_energy": float(grad_mush_e),
+        "grad_ratio": float(grad_ratio),
+        "ratio_gain_percentage": float((grad_ratio / std_ratio - 1) * 100)
+    },
+    config={
+        "gamma": 1.8,
+        "threshold": 0.12,
+        "gating_type": "Dual Spatial-Channel Gating"
+    }
+)

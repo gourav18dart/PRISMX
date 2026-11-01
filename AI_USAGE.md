@@ -58,11 +58,11 @@ The implementation proceeded in five sequential research phases. Below are the s
 ---
 
 ### Phase 4: Implementing Solution 2 (Resolving Class-Agnostic Distractors)
-* **Researcher's Objective:** Implement the researcher's concept of Pre-SVD Gradient Gating and Contrastive Disentanglement.
+* **Researcher's Objective:** Implement the researcher's concept of Pre-SVD Dual Spatial-Channel Gradient Gating and Contrastive Disentanglement.
 * **Standardized Prompt Used:**
   > *"In Section 4.2 and Figure 12, PRISM exhibits target-blindness by brightly coloring background distractors (like the mushroom next to the dog, or a coin next to a spider). The paper's post-hoc Grad-CAM blending is mathematically flawed because the SVD basis is already corrupted. Implement our proposed Grad-PRISM:
-  > 1. Compute class-specific gradients with respect to the feature map before SVD: $\alpha_k^c = \frac{1}{Z}\sum \frac{\partial y^c}{\partial A_k}$.
-  > 2. Gate the channels using $\tilde{A}^k = \text{ReLU}(\alpha_k^c) \cdot A^k$ prior to SVD so distractor channels are eliminated from the basis.
+  > 1. Formulate Dual Spatial-Channel Gradient Gating: compute channel weights $w_{ch}^k = \frac{\text{ReLU}(\alpha_k^c)}{\max_m \alpha_m^c + \epsilon}$ from pooled gradients, alongside spatial Grad-CAM saliency mask $M^c(u,v)^\gamma$.
+  > 2. Gate activations using $\tilde{A}^k(u,v) = A^k(u,v) \cdot w_{ch}^k \cdot (M^c(u,v))^\gamma$ prior to SVD so both irrelevant feature channels and distractor coordinates are suppressed before calculating eigenvectors.
   > 3. Formulate Contrastive cPRISM using counterfactual gradient differences between competing classes.
   > 4. Measure the Signal-to-Distractor Ratio (SDR) and evaluate on the exact paper samples (Malamute+Mushroom, Black Widow+Coin) and multi-object test scenes."*
 
@@ -93,8 +93,13 @@ AI-generated code was treated as a draft and subjected to rigorous technical rev
      * Figure 4: 5-cell swap drop of **0.52** matched the paper's **0.54** average benchmark.
      * Figure 6: Active cell counts of **6, 15, and 21 cells** on the exact spider crops matched Figure 6 identically.
      * Figure 17: Top-3 variance of **42.3%** on the 5 canine classes matched the paper's ~40% benchmark.
-5. **Deterministic Seeding:**
-   * *Modification:* The researcher ensured `torch.backends.cudnn.deterministic = True` and fixed seeds (`seed=42`) were enforced across every script to guarantee 100% reproducibility across runs.
+5. **Formulation of Dual Spatial-Channel Gating:**
+   * *Issue:* Initial code drafts applied spatial masks to feature maps without gating feature channels by their positive class gradient weights $\alpha_k^c$, leading to a discrepancy between channel-level claims and spatial execution.
+   * *Modification:* The researcher unified both mechanisms into rigorous **Dual Spatial-Channel Gating**: $\tilde{A}^k(u,v) = A^k(u,v) \cdot w_{ch}^k \cdot (M^c(u,v))^\gamma$, filtering out negative channels while attenuating distractor spatial coordinates simultaneously.
+6. **Elimination of Hardcoded Class IDs and Provenance Tracking:**
+   * *Modification:* The researcher replaced raw magic numbers (e.g., 269, 272) with dynamic class lookup via `src/torchprism/metadata.py`, and added automated logging (`outputs/experiment_metadata.json`) capturing environment, hardware, GPU architecture, and output metrics.
+7. **Automated Unit Testing & Dependency Pinning:**
+   * *Modification:* The researcher authored an automated unit test suite (`tests/run_tests.py`) and pinned environment lockfile (`requirements-pinned.txt`) to ensure cross-platform reproducibility and CI verification.
 
 ---
 

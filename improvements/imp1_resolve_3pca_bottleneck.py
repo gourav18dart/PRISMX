@@ -10,12 +10,21 @@ This script:
 """
 
 import os
+import sys
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+
+# Add src to sys.path for metadata and class resolution
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from torchprism.metadata import get_class_id, get_class_name, record_experiment_metadata
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -79,21 +88,31 @@ def run_quantitative_fidelity_benchmark(model, matrix, mean_val, u, s, v, b, c, 
     print("1. QUANTITATIVE BENCHMARK: RECONSTRUCTION FIDELITY ACROSS PC DIMENSIONS")
     print("="*75)
     
+    coyote_idx = get_class_id("coyote")
+    wolf_idx = get_class_id("timber wolf")
+    print(f"Dynamically resolved classes: Coyote={coyote_idx} ({get_class_name(coyote_idx)}), Wolf={wolf_idx} ({get_class_name(wolf_idx)})")
+    
     k_vals = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30]
     bench_data = []
     
+    # NOTE ON ACADEMIC RIGOR:
+    # Here, for each K, we perform full 512-channel rank-K SVD reconstruction:
+    #   F_hat_K = (U_K @ S_K @ V_K^T) + mu  in R^{B x 512 x 7 x 7}
+    # This 512-channel tensor is passed into model.avgpool and model.classifier to
+    # rigorously measure how much of the network's top-1 softmax decision is preserved.
+    # (Distinct from the 3-channel visualization projection used later for human display).
     for k in k_vals:
         recon_centered = (u[:, :k] @ torch.diag(s[:k])) @ v[:, :k].t()
         recon_matrix = recon_centered + mean_val
-        recon_feats = recon_matrix.view(b, h, w, c).permute(0, 3, 1, 2)
+        recon_feats_512ch = recon_matrix.view(b, h, w, c).permute(0, 3, 1, 2)
         
         with torch.no_grad():
-            pooled = model.avgpool(recon_feats)
+            pooled = model.avgpool(recon_feats_512ch)
             logits = model.classifier(torch.flatten(pooled, 1))
             probs = torch.softmax(logits, dim=1)
             
-        coy_p = probs[0, 272].item()
-        wolf_p = probs[1, 269].item()
+        coy_p = probs[0, coyote_idx].item()
+        wolf_p = probs[1, wolf_idx].item()
         
         rel_err = (torch.norm(matrix - recon_matrix) / torch.norm(matrix)).item() * 100.0
         var_pct = ((s[:k]**2).sum() / (s**2).sum()).item() * 100.0
@@ -131,12 +150,23 @@ def compute_spectral_bands(u, s, b, h, w, pre_excitations):
     return bands
 
 def compute_high_variance_composite(u, s, b, h, w, pre_excitations, target_cum_var=0.85):
+    """
+    Computes a 3-channel visualization projection of the first K principal components.
+    
+    IMPORTANT METHODOLOGICAL DISTINCTION:
+    - SVD Feature Reconstruction (hat{F}_K in R^{B x 512 x 7 x 7}): used above for classifier
+      decision benchmarking across K=1..30 dimensions.
+    - SVD Visualization Projection (P_3 in R^{B x 3 x 7 x 7}): constructed below via variance-
+      weighted linear projection matrix W in R^{K x 3} to compress K >= 15 dimensions into
+      an interpretable 3-channel RGB representation for human visual inspection.
+    """
     variances = (s**2) / (s**2).sum()
     cum_var = torch.cumsum(variances, dim=0)
     k_needed = (cum_var >= target_cum_var).nonzero(as_tuple=True)[0][0].item() + 1
     k_needed = max(k_needed, 6)
     
     coords = u[:, :k_needed] @ torch.diag(s[:k_needed])
+    # Variance-weighted projection matrix from K dimensions to 3 RGB channels
     W = torch.zeros(k_needed, 3, device=u.device)
     for i in range(k_needed):
         channel = i % 3
@@ -241,6 +271,33 @@ def main():
     bands = compute_spectral_bands(u, s, b, h, w, pre_excitations)
     raw_comp, ge_comp, k_needed, cum_var = compute_high_variance_composite(u, s, b, h, w, pre_excitations, target_cum_var=0.85)
     plot_spectral_decomposition(raw_images, bands, ge_comp, k_needed, cum_var)
+    
+    # Provenance and metric logging
+    k3_entry = [d for d in bench_data if d[0] == 3][0]
+    k15_entry = [d for d in bench_data if d[0] == 15][0]
+    record_experiment_metadata(
+        script_name="improvements/imp1_resolve_3pca_bottleneck.py",
+        metrics={
+            "k3_baseline": {
+                "variance_preserved_pct": k3_entry[1],
+                "relative_error_pct": k3_entry[2],
+                "coyote_prob": k3_entry[3],
+                "wolf_prob": k3_entry[4]
+            },
+            "k15_spectral": {
+                "variance_preserved_pct": k15_entry[1],
+                "relative_error_pct": k15_entry[2],
+                "coyote_prob": k15_entry[3],
+                "wolf_prob": k15_entry[4]
+            },
+            "high_variance_composite_k": k_needed,
+            "high_variance_composite_cum_var": cum_var
+        },
+        config={
+            "target_cumulative_variance": 0.85,
+            "spectral_bands": ["Macro (PCs 1-3)", "Contour (PCs 4-6)", "Texture (PCs 7-9)"]
+        }
+    )
 
 if __name__ == "__main__":
     main()

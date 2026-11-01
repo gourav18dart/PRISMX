@@ -11,12 +11,20 @@ across diverse multi-domain ImageNet test cases:
 """
 
 import os
+import sys
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from torchprism.metadata import get_class_id, get_class_name, record_experiment_metadata
 
 # Deterministic seed
 torch.manual_seed(42)
@@ -198,10 +206,12 @@ def test_imp2_on_spider_coin():
     raw_std = (u_std[:, :3] @ torch.diag(s_std[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
     prism_ge_std = gradual_extrapolate(raw_std, ge_acts)[0].permute(1, 2, 0).detach().cpu().numpy()
     
-    # 2. Grad-PRISM
+    # 2. Grad-PRISM: Dual Spatial-Channel Gradient Gating
+    alpha_pos = torch.relu(w_target)
+    w_ch = alpha_pos / (alpha_pos.max() + 1e-8)
     cam_target = torch.relu((w_target * act).sum(dim=1, keepdim=True))
     cam_target = cam_target / (cam_target.max() + 1e-8)
-    act_purified = act * (cam_target ** 1.8)
+    act_purified = act * w_ch * (cam_target ** 1.8)
     mat_purified = act_purified.permute(0, 2, 3, 1).reshape(-1, 512)
     u_pur, s_pur, _ = torch.svd(mat_purified - mat_purified.mean(0))
     raw_pur = (u_pur[:, :3] @ torch.diag(s_pur[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
@@ -222,7 +232,7 @@ def test_imp2_on_spider_coin():
     
     print(f"Spider vs Coin Signal-to-Distractor Ratio (SDR):")
     print(f"  Standard PRISM SDR: {std_sdr:.2f}")
-    print(f"  Grad-PRISM SDR:     {grad_sdr:.2f} (Coin distractor eliminated!)")
+    print(f"  Grad-PRISM SDR:     {grad_sdr:.2f} (Distractor energy suppressed)")
     
     fig, axes = plt.subplots(1, 4, figsize=(18, 4.8), dpi=300)
     axes[0].imshow(img.resize((224, 224)))
@@ -277,11 +287,12 @@ def run_dog_cat_evaluation():
     logits = model(t)
     probs = torch.softmax(logits, dim=1)
     
-    dog_class = 207  # Golden Retriever
-    cat_class = 281  # Tabby Cat
+    dog_class = get_class_id("golden retriever")
+    cat_class = get_class_id("tabby")
     
     p_dog = probs[0, dog_class].item()
     p_cat = probs[0, cat_class].item()
+    print(f"Dynamically resolved: Dog={dog_class} ({get_class_name(dog_class)}), Cat={cat_class} ({get_class_name(cat_class)})")
     print(f"Golden Retriever Prob: {p_dog:.4f} | Tabby Cat Prob: {p_cat:.4f}")
     
     model.zero_grad()
@@ -307,10 +318,11 @@ def run_dog_cat_evaluation():
     raw_std = (u_std[:, :3] @ torch.diag(s_std[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
     prism_std = gradual_extrapolate(raw_std, ge_acts)[0].permute(1, 2, 0).detach().cpu().numpy()
     
-    # Grad-PRISM for Dog
+    # Dual Spatial-Channel Grad-PRISM for Dog
+    w_dog_ch = torch.relu(w_dog) / (torch.relu(w_dog).max() + 1e-8)
     cam_dog = torch.relu((w_dog * act).sum(dim=1, keepdim=True))
     cam_dog = cam_dog / (cam_dog.max() + 1e-8)
-    act_dog = act * (cam_dog ** 1.8)
+    act_dog = act * w_dog_ch * (cam_dog ** 1.8)
     mat_dog = act_dog.permute(0, 2, 3, 1).reshape(-1, 512)
     u_dog, s_dog, _ = torch.svd(mat_dog - mat_dog.mean(0, keepdim=True))
     raw_dog = (u_dog[:, :3] @ torch.diag(s_dog[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
@@ -318,10 +330,11 @@ def run_dog_cat_evaluation():
     mask_dog = nn.functional.interpolate(cam_dog, size=(ge_dog.shape[2], ge_dog.shape[3]), mode="bilinear", align_corners=False)
     grad_prism_dog = (ge_dog * (mask_dog > 0.12).float())[0].permute(1, 2, 0).detach().cpu().numpy()
     
-    # Grad-PRISM for Cat
+    # Dual Spatial-Channel Grad-PRISM for Cat
+    w_cat_ch = torch.relu(w_cat) / (torch.relu(w_cat).max() + 1e-8)
     cam_cat = torch.relu((w_cat * act).sum(dim=1, keepdim=True))
     cam_cat = cam_cat / (cam_cat.max() + 1e-8)
-    act_cat = act * (cam_cat ** 1.8)
+    act_cat = act * w_cat_ch * (cam_cat ** 1.8)
     mat_cat = act_cat.permute(0, 2, 3, 1).reshape(-1, 512)
     u_cat, s_cat, _ = torch.svd(mat_cat - mat_cat.mean(0, keepdim=True))
     raw_cat = (u_cat[:, :3] @ torch.diag(s_cat[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
@@ -331,9 +344,10 @@ def run_dog_cat_evaluation():
     
     # Contrastive cPRISM
     w_cnt = torch.relu(w_dog - w_cat)
+    w_cnt_ch = w_cnt / (w_cnt.max() + 1e-8)
     cam_cnt = torch.relu((w_cnt * act).sum(dim=1, keepdim=True))
     cam_cnt = cam_cnt / (cam_cnt.max() + 1e-8)
-    act_cnt = act * (cam_cnt ** 1.8)
+    act_cnt = act * w_cnt_ch * (cam_cnt ** 1.8)
     mat_cnt = act_cnt.permute(0, 2, 3, 1).reshape(-1, 512)
     u_cnt, s_cnt, _ = torch.svd(mat_cnt - mat_cnt.mean(0, keepdim=True))
     raw_cnt = (u_cnt[:, :3] @ torch.diag(s_cnt[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
@@ -351,11 +365,11 @@ def run_dog_cat_evaluation():
     axes[1].axis("off")
     
     axes[2].imshow(grad_prism_dog)
-    axes[2].set_title("Grad-PRISM: Target Dog\n[Cat Completely Silenced]", fontsize=10.5, fontweight='bold', color='darkgreen')
+    axes[2].set_title("Grad-PRISM: Target Dog\n[Cat Distractor Suppressed]", fontsize=10.5, fontweight='bold', color='darkgreen')
     axes[2].axis("off")
     
     axes[3].imshow(grad_prism_cat)
-    axes[3].set_title("Grad-PRISM: Target Cat\n[Dog Completely Silenced]", fontsize=10.5, fontweight='bold', color='darkgreen')
+    axes[3].set_title("Grad-PRISM: Target Cat\n[Dog Distractor Suppressed]", fontsize=10.5, fontweight='bold', color='darkgreen')
     axes[3].axis("off")
     
     axes[4].imshow(cprism_dog_cat)
@@ -442,9 +456,9 @@ def run_car_street_evaluation():
     logits = model(t)
     probs = torch.softmax(logits, dim=1)
     
-    car_class = 734  # Vehicle / Police van / Car
+    car_class = get_class_id("police van")
     p_car = probs[0, car_class].item()
-    print(f"Vehicle Prediction Prob: {p_car:.4f}")
+    print(f"Dynamically resolved Vehicle: {car_class} ({get_class_name(car_class)}), Prob: {p_car:.4f}")
     
     logits[0, car_class].backward(retain_graph=True)
     w_car = gradients[0].mean(dim=(2, 3), keepdim=True)
@@ -462,9 +476,11 @@ def run_car_street_evaluation():
     raw_std = (u_std[:, :3] @ torch.diag(s_std[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
     prism_std = gradual_extrapolate(raw_std, ge_acts)[0].permute(1, 2, 0).detach().cpu().numpy()
     
+    # Dual Spatial-Channel Grad-PRISM
+    w_car_ch = torch.relu(w_car) / (torch.relu(w_car).max() + 1e-8)
     cam_car = torch.relu((w_car * act).sum(dim=1, keepdim=True))
     cam_car = cam_car / (cam_car.max() + 1e-8)
-    act_car = act * (cam_car ** 1.8)
+    act_car = act * w_car_ch * (cam_car ** 1.8)
     mat_car = act_car.permute(0, 2, 3, 1).reshape(-1, 512)
     u_car, s_car, _ = torch.svd(mat_car - mat_car.mean(0, keepdim=True))
     raw_car = (u_car[:, :3] @ torch.diag(s_car[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
@@ -485,7 +501,7 @@ def run_car_street_evaluation():
     grad_sdr = grad_energy[car_mask].mean() / (grad_energy[clutter_mask].mean() + 1e-8)
     print(f"Car vs Pedestrian Clutter SDR:")
     print(f"  Standard PRISM SDR: {std_sdr:.2f}")
-    print(f"  Grad-PRISM SDR:     {grad_sdr:.2f} (+{(grad_sdr/std_sdr - 1)*100:.1f}% improvement; Crowd silenced!)")
+    print(f"  Grad-PRISM SDR:     {grad_sdr:.2f} (+{(grad_sdr/std_sdr - 1)*100:.1f}% improvement; Clutter energy suppressed)")
     
     fig, axes = plt.subplots(1, 4, figsize=(18, 4.8), dpi=300)
     axes[0].imshow(img.resize((224, 224)))
@@ -563,11 +579,29 @@ def main():
     print("=" * 80)
     print("RUNNING MULTI-DOMAIN IMPROVEMENTS EVALUATION SUITE")
     print("=" * 80)
-    test_imp1_on_image(os.path.join(DATA_DIR, "electric_locomotive.png"), class_idx=547, name="Electric Locomotive", filename_prefix="locomotive")
-    test_imp1_on_image(os.path.join(DATA_DIR, "cheeseburger.png"), class_idx=933, name="Cheeseburger", filename_prefix="cheeseburger")
+    loco_idx = get_class_id("electric locomotive")
+    burger_idx = get_class_id("cheeseburger")
+    
+    test_imp1_on_image(os.path.join(DATA_DIR, "electric_locomotive.png"), class_idx=loco_idx, name="Electric Locomotive", filename_prefix="locomotive")
+    test_imp1_on_image(os.path.join(DATA_DIR, "cheeseburger.png"), class_idx=burger_idx, name="Cheeseburger", filename_prefix="cheeseburger")
     test_imp2_on_spider_coin()
     run_dog_cat_evaluation()
     run_car_street_evaluation()
+    
+    record_experiment_metadata(
+        script_name="experiments/eval_multidomain_improvements.py",
+        metrics={
+            "domains_evaluated": [
+                "Electric Locomotive (Spectral Fidelity)",
+                "Cheeseburger (Fine Texture Recovery)",
+                "Spider + Coin (Metallic Distractor Suppression)",
+                "Golden Retriever + Tabby Cat (Dual Disentanglement)",
+                "Car on Busy Street (Pedestrian Clutter Suppression)"
+            ]
+        },
+        config={"gating": "Dual Spatial-Channel Gating", "spectral_tiers": 3}
+    )
+    
     print("\n" + "=" * 80)
     print("ALL MULTI-DOMAIN EVALUATIONS COMPLETED SUCCESSFULLY")
     print("=" * 80)

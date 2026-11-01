@@ -11,6 +11,7 @@ This script:
 """
 
 import os
+import sys
 import json
 import torch
 import torch.nn as nn
@@ -18,6 +19,14 @@ from torchvision import models, transforms
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+
+# Dynamic class and metadata resolution
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from torchprism.metadata import get_class_id, get_class_name, record_experiment_metadata
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -109,8 +118,11 @@ def main():
     with torch.no_grad():
         probs_5 = torch.softmax(model.classifier(torch.flatten(model.avgpool(sw_5), 1)), dim=1)
     
-    delta_5 = abs(orig_probs[0, 272].item() - probs_5[0, 272].item())
-    print(f"\n[Test A: 5 Muzzle Cells Swap] Coyote Drop: {delta_5:.2f} (Paper average shift across 12 pairs: 0.54)")
+    coyote_idx = get_class_id("coyote")
+    wolf_idx = get_class_id("timber wolf")
+    
+    delta_5 = abs(orig_probs[0, coyote_idx].item() - probs_5[0, coyote_idx].item())
+    print(f"\n[Test A: 5 Muzzle Cells Swap] Coyote Drop: {delta_5:.2f} (Paper reported benchmark shift: ~0.54)")
     
     # 2. Test Full Head Swap (Complete Classification Inversion)
     head_cells = [(r, c) for r in range(0, 5) for c in range(0, 4)]
@@ -125,6 +137,19 @@ def main():
         
     coy_after = format_top3(probs_head[0])
     wolf_after = format_top3(probs_head[1])
+    
+    # Provenance tracking
+    record_experiment_metadata(
+        script_name="experiments/exp1_faithfulness.py",
+        metrics={
+            "coyote_orig_prob": float(orig_probs[0, coyote_idx].item()),
+            "wolf_orig_prob": float(orig_probs[1, wolf_idx].item()),
+            "coyote_delta_5cells": float(delta_5),
+            "coyote_prob_after_head_swap": float(probs_head[0, coyote_idx].item()),
+            "inverted_wolf_prob_in_coyote_img": float(probs_head[0, wolf_idx].item())
+        },
+        config={"muzzle_cells": muzzle_cells, "head_cells_count": len(head_cells)}
+    )
     
     print("\n--- MODIFIED PREDICTIONS (COMPLETE CLASS INVERSION) ---")
     print(f"Coyote Image (with Wolf Head): {coy_after[0][0]}: {coy_after[0][1]:.2f} (Inverted to Timber Wolf!)")

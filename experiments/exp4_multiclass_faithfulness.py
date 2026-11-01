@@ -13,12 +13,20 @@ verifying the progressive softmax confidence drop and Top-1 decision inversion.
 """
 
 import os
+import sys
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from torchprism.metadata import get_class_id, get_class_name, record_experiment_metadata
 
 torch.manual_seed(42)
 np.random.seed(42)
@@ -168,19 +176,38 @@ def main():
     print("=" * 80)
     print("EXPERIMENT 4: MULTI-CLASS FAITHFULNESS VIA REPRESENTATION SWAPPING")
     print("=" * 80)
+    
+    burger_idx = get_class_id("cheeseburger")
+    bagel_idx = get_class_id("bagel")
+    pass_car_idx = get_class_id("passenger car")
+    loco_idx = get_class_id("electric locomotive")
+    print(f"Dynamically resolved Food pair: Cheeseburger={burger_idx}, Bagel={bagel_idx}")
+    print(f"Dynamically resolved Trains pair: Passenger Car={pass_car_idx}, Electric Locomotive={loco_idx}")
+    
     evaluate_pair(
         "Cheeseburger", "Bagel",
         "cheeseburger.png", "bagel.png",
-        class_a=933, class_b=931,
+        class_a=burger_idx, class_b=bagel_idx,
         out_filename="reproduced_fig3_cheeseburger_bagel_swapping.png",
         title="Paper Fig. 3 Reproduction: Faithfulness Swapping (Cheeseburger <-> Bagel)"
     )
     evaluate_pair(
         "Passenger Car", "Electric Locomotive",
         "passenger_car.png", "electric_locomotive.png",
-        class_a=705, class_b=547,
+        class_a=pass_car_idx, class_b=loco_idx,
         out_filename="reproduced_fig5_trains_swapping.png",
         title="Paper Fig. 5 Reproduction: Faithfulness Swapping (Passenger Car <-> Electric Locomotive)"
+    )
+    
+    record_experiment_metadata(
+        script_name="experiments/exp4_multiclass_faithfulness.py",
+        metrics={
+            "cheeseburger_id": burger_idx,
+            "bagel_id": bagel_idx,
+            "passenger_car_id": pass_car_idx,
+            "electric_locomotive_id": loco_idx
+        },
+        config={"pairs_tested": ["Cheeseburger vs Bagel", "Passenger Car vs Electric Locomotive"]}
     )
 
 if __name__ == "__main__":

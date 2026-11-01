@@ -5,6 +5,7 @@ and reveals the exact missing features recovered by PCs 4-15 that restore model 
 """
 
 import os
+import sys
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
@@ -12,11 +13,16 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from torchprism.metadata import get_class_id, get_class_name, record_experiment_metadata
+
 torch.manual_seed(42)
 np.random.seed(42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data", "samples")
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -68,7 +74,8 @@ for h in handles:
 final_act = activations.pop()
 pre_excitations = activations
 
-wolf_true_prob = probs[1, 269].item() # 0.9118
+wolf_class = get_class_id("timber wolf")
+wolf_true_prob = probs[1, wolf_class].item() # ~0.9118
 
 # SVD
 b, c, h, w = final_act.shape
@@ -91,9 +98,9 @@ with torch.no_grad():
     pooled_3 = model.avgpool(recon_feats_3)
     logits_3 = model.classifier(torch.flatten(pooled_3, 1))
     probs_3 = torch.softmax(logits_3, dim=1)
-wolf_prob_3 = probs_3[1, 269].item() # 0.6035
+wolf_prob_3 = probs_3[1, wolf_class].item() # ~0.6035
 
-# 2. 15 PCs Reconstruction
+# 2. 15 PCs Reconstruction (Full 512-dim tensor passed to classifier)
 k_15 = 15
 var_15 = cum_variances[k_15-1].item() * 100.0
 
@@ -103,7 +110,7 @@ with torch.no_grad():
     pooled_15 = model.avgpool(recon_feats_15)
     logits_15 = model.classifier(torch.flatten(pooled_15, 1))
     probs_15 = torch.softmax(logits_15, dim=1)
-wolf_prob_15 = probs_15[1, 269].item() # 0.9017
+wolf_prob_15 = probs_15[1, wolf_class].item() # ~0.9017
 
 # 3. What PCs 4-15 actually contain: The Missing Feature Energy Map
 # In 512-dim feature space, the mathematical residual that 3-PC threw away:
@@ -246,3 +253,16 @@ plt.suptitle("Why 3 PCs vs 15 PCs Matter: Unveiling the Hidden 43.5% Feature Var
 
 plt.savefig(save_path, bbox_inches='tight', dpi=300)
 print(f"Successfully generated revealed difference comparison: {save_path}")
+
+record_experiment_metadata(
+    script_name="experiments/eval_wolf_difference_revealed.py",
+    metrics={
+        "wolf_original_probability": float(wolf_true_prob),
+        "wolf_k3_probability": float(wolf_prob_3),
+        "wolf_k15_probability": float(wolf_prob_15),
+        "k3_variance_pct": float(var_3),
+        "k15_variance_pct": float(var_15),
+        "restored_confidence_gain": float(wolf_prob_15 - wolf_prob_3)
+    },
+    config={"target_class_id": wolf_class, "target_class_name": get_class_name(wolf_class)}
+)

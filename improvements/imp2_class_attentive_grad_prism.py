@@ -11,12 +11,21 @@ This script:
 """
 
 import os
+import sys
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+
+# Add src to sys.path for metadata and class resolution
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from torchprism.metadata import get_class_id, get_class_name, record_experiment_metadata
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -89,17 +98,24 @@ def run_grad_prism(model, input_tensor, target_class, competing_class=None, gamm
     hf.remove(); hb.remove()
     for h in ge_handles: h.remove()
     
-    # 1. Standard PRISM
+    # 1. Standard PRISM (Unweighted SVD)
     mat_std = act.permute(0, 2, 3, 1).reshape(-1, 512)
     u_std, s_std, v_std = torch.svd(mat_std - mat_std.mean(0))
     raw_std = (u_std[:, :3] @ torch.diag(s_std[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
     ge_std = gradual_extrapolate(raw_std, ge_acts)
     
-    # 2. Grad-PRISM
+    # 2. Grad-PRISM: Dual Spatial-Channel Gradient Gating
+    # Feature-channel importance weighting (alpha_k^c)
+    alpha_pos = torch.relu(w_target)
+    w_ch = alpha_pos / (alpha_pos.max() + 1e-8)
+    
+    # Spatial saliency modulation (Grad-CAM mask)
     cam_target = torch.relu((w_target * act).sum(dim=1, keepdim=True))
     cam_target = cam_target / (cam_target.max() + 1e-8)
     spatial_filter = cam_target ** gamma
-    act_purified = act * spatial_filter
+    
+    # Combined Dual Gated Activation Tensor
+    act_purified = act * w_ch * spatial_filter
     mat_purified = act_purified.permute(0, 2, 3, 1).reshape(-1, 512)
     u_pur, s_pur, v_pur = torch.svd(mat_purified - mat_purified.mean(0))
     raw_grad_prism = (u_pur[:, :3] @ torch.diag(s_pur[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
@@ -108,12 +124,16 @@ def run_grad_prism(model, input_tensor, target_class, competing_class=None, gamm
     mask_up = nn.functional.interpolate(cam_target, size=(h_ext, w_ext), mode="bilinear", align_corners=False)
     ge_grad_prism_gated = ge_grad_prism * (mask_up > 0.15).float()
     
-    # 3. Contrastive cPRISM
+    # 3. Contrastive cPRISM: Differential Dual Spatial-Channel Gating
     if w_comp is not None:
-        w_contrast = torch.relu(w_target - w_comp)
-        cam_contrast = torch.relu((w_contrast * act).sum(dim=1, keepdim=True))
+        w_diff = torch.relu(w_target - w_comp)
+        w_diff_ch = w_diff / (w_diff.max() + 1e-8)
+        
+        cam_contrast = torch.relu((w_diff * act).sum(dim=1, keepdim=True))
         cam_contrast = cam_contrast / (cam_contrast.max() + 1e-8)
-        act_contrast = act * (cam_contrast ** gamma)
+        spatial_contrast = cam_contrast ** gamma
+        
+        act_contrast = act * w_diff_ch * spatial_contrast
         mat_cnt = act_contrast.permute(0, 2, 3, 1).reshape(-1, 512)
         u_cnt, s_cnt, v_cnt = torch.svd(mat_cnt - mat_cnt.mean(0))
         raw_cprism = (u_cnt[:, :3] @ torch.diag(s_cnt[:3])).view(1, 7, 7, 3).permute(0, 3, 1, 2)
@@ -147,17 +167,36 @@ def main():
     
     model = models.vgg16(weights=models.VGG16_Weights.DEFAULT).to(device).eval()
     
-    ge_std, ge_coy, ge_coy_contrast = run_grad_prism(model, comp_t, target_class=272, competing_class=269)
-    _, ge_wolf, ge_wolf_contrast = run_grad_prism(model, comp_t, target_class=269, competing_class=272)
+    # Dynamic class ID resolution
+    coyote_idx = get_class_id("coyote")
+    wolf_idx = get_class_id("timber wolf")
+    print(f"Resolved Class IDs dynamically: Coyote={coyote_idx} ({get_class_name(coyote_idx)}), Timber Wolf={wolf_idx} ({get_class_name(wolf_idx)})")
+    
+    ge_std, ge_coy, ge_coy_contrast = run_grad_prism(model, comp_t, target_class=coyote_idx, competing_class=wolf_idx)
+    _, ge_wolf, ge_wolf_contrast = run_grad_prism(model, comp_t, target_class=wolf_idx, competing_class=coyote_idx)
     
     std_sdr = compute_sdr(ge_std[0].norm(dim=0).cpu(), target_is_left=True)
     grad_sdr = compute_sdr(ge_coy[0].norm(dim=0).cpu(), target_is_left=True)
     c_sdr = compute_sdr(ge_coy_contrast[0].norm(dim=0).cpu(), target_is_left=True)
     
     print(f"\nSignal-to-Distractor Ratio (SDR) for Target Coyote:")
-    print(f"  Standard PRISM:   {std_sdr:5.2f}")
-    print(f"  Grad-PRISM:       {grad_sdr:5.2f} (+{(grad_sdr/std_sdr - 1)*100:.1f}% improvement)")
+    print(f"  Standard PRISM:     {std_sdr:5.2f}")
+    print(f"  Grad-PRISM:         {grad_sdr:5.2f} (+{(grad_sdr/std_sdr - 1)*100:.1f}% improvement)")
     print(f"  Contrastive cPRISM: {c_sdr:5.2f}")
+    
+    # Provenance and metric logging
+    record_experiment_metadata(
+        script_name="improvements/imp2_class_attentive_grad_prism.py",
+        metrics={
+            "coyote_class_id": coyote_idx,
+            "wolf_class_id": wolf_idx,
+            "standard_prism_sdr": float(std_sdr),
+            "grad_prism_sdr": float(grad_sdr),
+            "contrastive_cprism_sdr": float(c_sdr),
+            "sdr_gain_percentage": float((grad_sdr / std_sdr - 1) * 100)
+        },
+        config={"gamma": 2.0, "mask_threshold": 0.15, "gating_type": "Dual Spatial-Channel Gating"}
+    )
     
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
     
@@ -168,10 +207,10 @@ def main():
     axes[0, 1].set_title("Standard PRISM (Target-Agnostic)\n[Distractor Wolf Contaminates Colors]", fontsize=10, fontweight='bold', color='darkred')
     axes[0, 1].axis("off")
     axes[0, 2].imshow(ge_coy[0].detach().permute(1, 2, 0).cpu().numpy())
-    axes[0, 2].set_title("Grad-PRISM: Target Coyote\n[Wolf Distractor Eliminated]", fontsize=10, fontweight='bold', color='darkgreen')
+    axes[0, 2].set_title(f"Grad-PRISM: Target Coyote\n[Distractor Energy Suppressed (SDR: {grad_sdr:.1f}x)]", fontsize=10, fontweight='bold', color='darkgreen')
     axes[0, 2].axis("off")
     axes[0, 3].imshow(ge_coy_contrast[0].detach().permute(1, 2, 0).cpu().numpy())
-    axes[0, 3].set_title("Contrastive cPRISM: Coyote vs Wolf\n[Counterfactual Disentanglement]", fontsize=10, fontweight='bold', color='navy')
+    axes[0, 3].set_title("Contrastive cPRISM: Coyote vs Wolf\n[Counterfactual Feature Disentanglement]", fontsize=10, fontweight='bold', color='navy')
     axes[0, 3].axis("off")
     
     axes[1, 0].imshow(comp_img.resize((224, 224)))
@@ -181,13 +220,13 @@ def main():
     axes[1, 1].set_title("Standard PRISM (Target-Agnostic)\n[Both Objects Intermixed]", fontsize=10, fontweight='bold', color='darkred')
     axes[1, 1].axis("off")
     axes[1, 2].imshow(ge_wolf[0].detach().permute(1, 2, 0).cpu().numpy())
-    axes[1, 2].set_title("Grad-PRISM: Target Timber Wolf\n[Coyote Distractor Eliminated]", fontsize=10, fontweight='bold', color='darkgreen')
+    axes[1, 2].set_title("Grad-PRISM: Target Timber Wolf\n[Coyote Distractor Energy Suppressed]", fontsize=10, fontweight='bold', color='darkgreen')
     axes[1, 2].axis("off")
     axes[1, 3].imshow(ge_wolf_contrast[0].detach().permute(1, 2, 0).cpu().numpy())
-    axes[1, 3].set_title("Contrastive cPRISM: Wolf vs Coyote\n[Counterfactual Disentanglement]", fontsize=10, fontweight='bold', color='navy')
+    axes[1, 3].set_title("Contrastive cPRISM: Wolf vs Coyote\n[Counterfactual Feature Disentanglement]", fontsize=10, fontweight='bold', color='navy')
     axes[1, 3].axis("off")
     
-    plt.suptitle("Eliminating Class-Agnostic Distractors: Grad-PRISM & Contrastive cPRISM", fontsize=14, fontweight='bold', y=0.98)
+    plt.suptitle("Target Purification via Dual Spatial-Channel Grad-PRISM & Contrastive cPRISM", fontsize=14, fontweight='bold', y=0.98)
     plt.tight_layout()
     out_path = os.path.join(OUTPUT_DIR, "solution_distractors_grad_prism.png")
     plt.savefig(out_path, dpi=200, bbox_inches="tight")

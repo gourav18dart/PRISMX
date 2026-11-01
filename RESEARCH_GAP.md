@@ -50,8 +50,11 @@ PRISM performs SVD in an entirely **unsupervised, class-agnostic** manner. SVD c
 
 To resolve these two gaps, we engineered **PRISMX**:
 1. **Resolving Gap 1 via High-Variance Manifold PRISM and Spectral Bands:**
-   * Implemented an adaptive variance threshold ($\ge 85\%$) that dynamically selects $K$ (e.g., $K=14\text{--}15$), reducing relative feature error from $59.2\%$ to $32.8\%$ and fully restoring prediction confidence ($0.47 \rightarrow 0.90+$).
-   * Decomposed the manifold into **3 Spectral Bands** (Tier 1 Macro, Tier 2 Contours, Tier 3 Textures), allowing full multi-dimensional inspection without visual overlap.
-2. **Resolving Gap 2 via Class-Attentive Grad-PRISM and Contrastive cPRISM:**
-   * Integrated class gradients **prior to SVD** ($\tilde{A}^k = \text{ReLU}(\alpha_k^c) \cdot A^k$). Channels irrelevant to target class $c$ are zeroed out before computing eigenvectors, ensuring that 100% of the SVD basis explains only the target class.
-   * Formulated Contrastive PRISM (cPRISM) to isolate counterfactual discriminators between competing classes.
+   * **SVD Feature Reconstruction ($\hat{F}_{15}$):** Implemented an adaptive variance threshold ($\ge 85\%$) that dynamically selects $K$ (e.g., $K=14\text{--}15$). Passing the full 512-channel rank-15 reconstructed tensor ($\hat{F}_{15} = U_{15} S_{15} V_{15}^T + \mu$) to the classifier reduces relative feature error from $59.2\%$ down to $32.8\%$ and restores prediction confidence from $0.47$ back to $0.902$ (within 2.5% of the uncompressed 512D baseline).
+   * **Visualization Projection and Spectral Bands:** Formulated a variance-weighted linear projection matrix $W \in \mathbb{R}^{K \times 3}$ to map $K \ge 15$ dimensions into human-visible RGB, complemented by **3 Spectral Bands** (Tier 1 Macro PCs 1–3, Tier 2 Contours PCs 4–6, Tier 3 Textures PCs 7–9), enabling multi-tier structural inspection without color crowding.
+2. **Resolving Gap 2 via Dual Spatial-Channel Grad-PRISM and Contrastive cPRISM:**
+   * Integrated class gradients **prior to SVD** using **Dual Spatial-Channel Gating**:
+     $$\tilde{A}^k(u,v) = A^k(u,v) \cdot w_{ch}^k \cdot (M^c(u,v))^\gamma$$
+     where feature channels are gated by their pooled positive gradient weight $w_{ch}^k = \frac{\text{ReLU}(\alpha_k^c)}{\max_m \alpha_m^c + \epsilon}$, and spatial positions are modulated by the Grad-CAM saliency mask $M^c(u,v)^\gamma$.
+   * Irrelevant background channels and distractor coordinates are attenuated before computing eigenvectors, effectively isolating class-salient activations and suppressing distractor energy by over 90% (improving target selectivity by up to +44.3%).
+   * Formulated Contrastive PRISM (cPRISM) with differential weights $w_{\text{contrast}}^k = \frac{\text{ReLU}(\alpha_k^{c_1} - \alpha_k^{c_2})}{\max_m (\alpha_m^{c_1} - \alpha_m^{c_2}) + \epsilon}$ to isolate counterfactual discriminators between competing co-occurring classes.

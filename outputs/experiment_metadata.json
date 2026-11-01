@@ -1,0 +1,268 @@
+[
+  {
+    "script": "improvements/imp2_class_attentive_grad_prism.py",
+    "environment": {
+      "timestamp_utc": "2026-11-01T09:41:41Z",
+      "os": "Windows-11-10.0.26200-SP0",
+      "python_version": "3.12.8",
+      "torch_version": "2.5.1+cu121",
+      "torchvision_version": "0.20.1+cu121",
+      "cuda_available": true,
+      "device": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+      "default_model": "VGG16",
+      "default_weights": "VGG16_Weights.IMAGENET1K_V1",
+      "deterministic_seed": 42
+    },
+    "config": {
+      "gamma": 2.0,
+      "mask_threshold": 0.15,
+      "gating_type": "Dual Spatial-Channel Gating"
+    },
+    "metrics": {
+      "coyote_class_id": 272,
+      "wolf_class_id": 269,
+      "standard_prism_sdr": 1.148146471375729,
+      "grad_prism_sdr": 1.2941449547911648,
+      "contrastive_cprism_sdr": 1.2508008619193738,
+      "sdr_gain_percentage": 12.716015513290557
+    }
+  },
+  {
+    "script": "improvements/imp1_resolve_3pca_bottleneck.py",
+    "environment": {
+      "timestamp_utc": "2026-11-01T09:41:29Z",
+      "os": "Windows-11-10.0.26200-SP0",
+      "python_version": "3.12.8",
+      "torch_version": "2.5.1+cu121",
+      "torchvision_version": "0.20.1+cu121",
+      "cuda_available": true,
+      "device": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+      "default_model": "VGG16",
+      "default_weights": "VGG16_Weights.IMAGENET1K_V1",
+      "deterministic_seed": 42
+    },
+    "config": {
+      "target_cumulative_variance": 0.85,
+      "spectral_bands": [
+        "Macro (PCs 1-3)",
+        "Contour (PCs 4-6)",
+        "Texture (PCs 7-9)"
+      ]
+    },
+    "metrics": {
+      "k3_baseline": {
+        "variance_preserved_pct": 56.47589564323425,
+        "relative_error_pct": 59.226036071777344,
+        "coyote_prob": 0.47400400042533875,
+        "wolf_prob": 0.6035462021827698
+      },
+      "k15_spectral": {
+        "variance_preserved_pct": 86.65634989738464,
+        "relative_error_pct": 32.793256640434265,
+        "coyote_prob": 0.9019558429718018,
+        "wolf_prob": 0.9016773104667664
+      },
+      "high_variance_composite_k": 14,
+      "high_variance_composite_cum_var": 0.8555781245231628
+    }
+  },
+  {
+    "script": "experiments/eval_distractor_malamute_mushroom.py",
+    "environment": {
+      "timestamp_utc": "2026-11-01T09:42:23Z",
+      "os": "Windows-11-10.0.26200-SP0",
+      "python_version": "3.12.8",
+      "torch_version": "2.5.1+cu121",
+      "torchvision_version": "0.20.1+cu121",
+      "cuda_available": true,
+      "device": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+      "default_model": "VGG16",
+      "default_weights": "VGG16_Weights.IMAGENET1K_V1",
+      "deterministic_seed": 42
+    },
+    "config": {
+      "gamma": 1.8,
+      "threshold": 0.12,
+      "gating_type": "Dual Spatial-Channel Gating"
+    },
+    "metrics": {
+      "malamute_class_id": 249,
+      "bolete_class_id": 997,
+      "standard_dog_energy": 1.063158392906189,
+      "standard_mushroom_energy": 1.0145450830459595,
+      "standard_ratio": 1.0479164123535156,
+      "grad_dog_energy": 0.969637930393219,
+      "grad_mushroom_energy": 0.6411518454551697,
+      "grad_ratio": 1.5123374462127686,
+      "ratio_gain_percentage": 44.318519592285156
+    }
+  },
+  {
+    "script": "experiments/exp1_faithfulness.py",
+    "environment": {
+      "timestamp_utc": "2026-11-01T09:40:13Z",
+      "os": "Windows-11-10.0.26200-SP0",
+      "python_version": "3.12.8",
+      "torch_version": "2.5.1+cu121",
+      "torchvision_version": "0.20.1+cu121",
+      "cuda_available": true,
+      "device": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+      "default_model": "VGG16",
+      "default_weights": "VGG16_Weights.IMAGENET1K_V1",
+      "deterministic_seed": 42
+    },
+    "config": {
+      "muzzle_cells": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          2
+        ]
+      ],
+      "head_cells_count": 20
+    },
+    "metrics": {
+      "coyote_orig_prob": 0.9254572987556458,
+      "wolf_orig_prob": 0.9117721319198608,
+      "coyote_delta_5cells": 0.5116744041442871,
+      "coyote_prob_after_head_swap": 0.13353316485881805,
+      "inverted_wolf_prob_in_coyote_img": 0.601050853729248
+    }
+  },
+  {
+    "script": "experiments/exp4_multiclass_faithfulness.py",
+    "environment": {
+      "timestamp_utc": "2026-11-01T09:41:13Z",
+      "os": "Windows-11-10.0.26200-SP0",
+      "python_version": "3.12.8",
+      "torch_version": "2.5.1+cu121",
+      "torchvision_version": "0.20.1+cu121",
+      "cuda_available": true,
+      "device": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+      "default_model": "VGG16",
+      "default_weights": "VGG16_Weights.IMAGENET1K_V1",
+      "deterministic_seed": 42
+    },
+    "config": {
+      "pairs_tested": [
+        "Cheeseburger vs Bagel",
+        "Passenger Car vs Electric Locomotive"
+      ]
+    },
+    "metrics": {
+      "cheeseburger_id": 933,
+      "bagel_id": 931,
+      "passenger_car_id": 705,
+      "electric_locomotive_id": 547
+    }
+  },
+  {
+    "script": "experiments/eval_fidelity_comparison.py",
+    "environment": {
+      "timestamp_utc": "2026-11-01T09:41:54Z",
+      "os": "Windows-11-10.0.26200-SP0",
+      "python_version": "3.12.8",
+      "torch_version": "2.5.1+cu121",
+      "torchvision_version": "0.20.1+cu121",
+      "cuda_available": true,
+      "device": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+      "default_model": "VGG16",
+      "default_weights": "VGG16_Weights.IMAGENET1K_V1",
+      "deterministic_seed": 42
+    },
+    "config": {
+      "cases": [
+        "Case 1: Full 512 Dims",
+        "Case 2: Standard PRISM (3 PCs)",
+        "Case 3: High-Var PRISMX (15 PCs)"
+      ]
+    },
+    "metrics": {
+      "case1_full_dims": {
+        "variance": 100.0,
+        "coyote_prob": 0.93,
+        "wolf_prob": 0.91
+      },
+      "case2_standard_prism_k3": {
+        "variance": 56.5,
+        "coyote_prob": 0.47,
+        "wolf_prob": 0.6
+      },
+      "case3_high_variance_k15": {
+        "variance": 86.7,
+        "coyote_prob": 0.9,
+        "wolf_prob": 0.9
+      }
+    }
+  },
+  {
+    "script": "experiments/eval_wolf_difference_revealed.py",
+    "environment": {
+      "timestamp_utc": "2026-11-01T09:42:09Z",
+      "os": "Windows-11-10.0.26200-SP0",
+      "python_version": "3.12.8",
+      "torch_version": "2.5.1+cu121",
+      "torchvision_version": "0.20.1+cu121",
+      "cuda_available": true,
+      "device": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+      "default_model": "VGG16",
+      "default_weights": "VGG16_Weights.IMAGENET1K_V1",
+      "deterministic_seed": 42
+    },
+    "config": {
+      "target_class_id": 269,
+      "target_class_name": "timber wolf, grey wolf, gray wolf, Canis lupus"
+    },
+    "metrics": {
+      "wolf_original_probability": 0.9117721319198608,
+      "wolf_k3_probability": 0.6035462021827698,
+      "wolf_k15_probability": 0.9016773104667664,
+      "k3_variance_pct": 56.475889682769775,
+      "k15_variance_pct": 86.65634393692017,
+      "restored_confidence_gain": 0.2981311082839966
+    }
+  },
+  {
+    "script": "experiments/eval_multidomain_improvements.py",
+    "environment": {
+      "timestamp_utc": "2026-11-01T09:42:50Z",
+      "os": "Windows-11-10.0.26200-SP0",
+      "python_version": "3.12.8",
+      "torch_version": "2.5.1+cu121",
+      "torchvision_version": "0.20.1+cu121",
+      "cuda_available": true,
+      "device": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+      "default_model": "VGG16",
+      "default_weights": "VGG16_Weights.IMAGENET1K_V1",
+      "deterministic_seed": 42
+    },
+    "config": {
+      "gating": "Dual Spatial-Channel Gating",
+      "spectral_tiers": 3
+    },
+    "metrics": {
+      "domains_evaluated": [
+        "Electric Locomotive (Spectral Fidelity)",
+        "Cheeseburger (Fine Texture Recovery)",
+        "Spider + Coin (Metallic Distractor Suppression)",
+        "Golden Retriever + Tabby Cat (Dual Disentanglement)",
+        "Car on Busy Street (Pedestrian Clutter Suppression)"
+      ]
+    }
+  }
+]

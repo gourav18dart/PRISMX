@@ -1,0 +1,10 @@
+# PRISMX Exact Reproducibility Environment Lockfile
+# System Python: 3.12 (Anaconda 64-bit Windows)
+# CUDA: cu121
+
+torch==2.5.1
+torchvision==0.20.1
+numpy==2.2.6
+matplotlib==3.10.8
+pillow==10.4.0
+icecream==2.1.4

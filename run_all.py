@@ -12,6 +12,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 BENCHMARKS = [
+    ("Automated Unit Test Suite (Core PRISM, Gating & SVD Conservation)", "tests/run_tests.py"),
     ("Experiment 1: Faithfulness via Representation Swapping on Canines (Fig. 4)", "experiments/exp1_faithfulness.py"),
     ("Experiment 2: Interpretability Insight on Spiders (Fig. 6)", "experiments/exp2_interpretability.py"),
     ("Experiment 2b: Interpretability Insight on Trains (Fig. 7)", "experiments/exp2_trains_interpretability.py"),

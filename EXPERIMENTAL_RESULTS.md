@@ -85,56 +85,67 @@ Evaluated the mathematical decay of singular values across principal components.
 ### 3.1 Improvement 1: Resolving the 3-PCA Bottleneck (High-Variance PRISMX & Spectral Bands)
 
 #### Quantitative Sweep: Reconstruction Fidelity across K = 1..30 Components
-We reconstructed the feature maps using $K$ components ($\hat{F}_K = U_K S_K V_K^T + \mu$) and evaluated classification recovery:
+To rigorously evaluate model fidelity, we performed full 512-channel rank-$K$ SVD feature reconstruction:
+$$\hat{F}_K = (U_K S_K V_K^T) + \mu \in \mathbb{R}^{B \times 512 \times 7 \times 7}$$
+This full-channel tensor was passed through `model.avgpool` and `model.classifier` to assess the preservation of the network's top-1 softmax decision.
+
+*(Note: This 512-channel reconstructed tensor used for classifier evaluation is distinct from the 3-channel projection matrix $W \in \mathbb{R}^{K \times 3}$ constructed later for human RGB visualization).*
 
 | Components ($K$) | Cumulative Variance | Relative Feature Error | Coyote Softmax Prob | Timber Wolf Softmax Prob | Operational Regime |
 | :---: | :---: | :---: | :---: | :---: | :--- |
-| **$K = 1$** | 28.32% | 78.43% | 0.2104 | 0.3412 | Severe under-representation |
-| **$K = 2$** | 44.71% | 67.29% | 0.3518 | 0.4820 | Major information loss |
-| **$K = 3$ (PRISM Baseline)** | **56.51%** | **59.20%** | **0.4740** | **0.6035** | **Paper Bottleneck (Decision Collapse)** |
-| **$K = 5$** | 67.12% | 51.45% | 0.6812 | 0.7410 | Progressive recovery |
-| **$K = 8$** | 75.84% | 44.30% | 0.8124 | 0.8340 | Intermediate certainty |
-| **$K = 10$** | 80.19% | 40.12% | 0.8540 | 0.8715 | Approaching baseline |
-| **$K = 15$ (Our Target)** | **86.68%** | **32.84%** | **0.9020** | **0.9017** | **True Model Fidelity Restored ($\ge 85\%$)** |
-| **$K = 20$** | 90.52% | 28.10% | 0.9180 | 0.9090 | Near identical to full model |
-| **$K = 30$** | 94.40% | 21.34% | 0.9240 | 0.9110 | Asymptotic ceiling |
+| **$K = 1$** | 31.15% | 74.49% | 0.3606 | 0.4052 | Severe under-representation |
+| **$K = 2$** | 45.36% | 66.36% | 0.4531 | 0.5096 | Major information loss |
+| **$K = 3$ (PRISM Baseline)** | **56.48%** | **59.23%** | **0.4740** | **0.6035** | **Paper Bottleneck (Decision Collapse)** |
+| **$K = 4$** | 62.47% | 55.00% | 0.8201 | 0.7330 | Rapid inflection point |
+| **$K = 5$** | 67.24% | 51.38% | 0.9429 | 0.8153 | Progressive recovery |
+| **$K = 6$** | 70.65% | 48.63% | 0.9402 | 0.8090 | Intermediate certainty |
+| **$K = 8$** | 76.12% | 43.87% | 0.9201 | 0.8673 | Stabilizing top-1 choice |
+| **$K = 10$** | 79.88% | 40.27% | 0.9038 | 0.8879 | Approaching baseline |
+| **$K = 15$ (Our Target)** | **86.66%** | **32.79%** | **0.9020** | **0.9017** | **True Model Fidelity Restored ($\ge 85\%$)** |
+| **$K = 20$** | 90.47% | 27.72% | 0.9077 | 0.9081 | Near identical to full model |
+| **$K = 30$** | 94.74% | 20.60% | 0.9086 | 0.9072 | Asymptotic ceiling |
 | **Full 512 Dims** | **100.00%** | **0.00%** | **0.9255** | **0.9118** | **Ground Truth Baseline** |
 
-#### Spectral-Band Multi-PRISM Decomposition
-Rather than projecting 15 dimensions into a single overlapping RGB image, we decomposed the representation into 3 hierarchical visual bands:
-1. **Tier 1 (PCs 1–3: Macro):** Coarse body silhouette and broad anatomical mass.
-2. **Tier 2 (PCs 4–6: Contours):** Sharp structural edges, muzzle outlines, and ear perimeters.
-3. **Tier 3 (PCs 7–9: Textures):** High-frequency fur striations, whiskers, and eye contrast.
+#### Spectral-Band Multi-PRISM Decomposition & Visualization Projection
+To enable human visual inspection of $K \ge 15$ components without 3-channel color crowding, we formulated:
+1. **Variance-Weighted 3-Channel Projection ($P_3$):** Linearly mapped coordinates using $W_{i, i \bmod 3} = S_i / S_0$.
+2. **Hierarchical 3-Tier Spectral Bands:**
+   * **Tier 1 (PCs 1–3: Macro):** Coarse body silhouette and broad anatomical mass.
+   * **Tier 2 (PCs 4–6: Contours):** Sharp structural edges, muzzle outlines, and ear perimeters.
+   * **Tier 3 (PCs 7–9: Textures):** High-frequency fur striations, whiskers, and eye contrast.
 * **Output Artifacts:** `outputs/solution_3pca_scree_fidelity.png`, `outputs/solution_3pca_spectral_bands.png`, and `outputs/wolf_3cases_difference_revealed.png`.
 
 ---
 
-### 3.2 Improvement 2: Resolving Class-Agnostic Distractors (Grad-PRISM & Contrastive cPRISM)
+### 3.2 Improvement 2: Resolving Class-Agnostic Distractors (Dual Spatial-Channel Grad-PRISM & Contrastive cPRISM)
 
-To eliminate distractor contamination without coarse post-hoc blending, we gated activations with class gradients **before SVD**:
-$$\tilde{A}^k = \text{ReLU}\left(\frac{1}{Z}\sum_{i,j}\frac{\partial y^c}{\partial A_{i,j}^k}\right) \cdot A^k$$
+To resolve distractor contamination accurately, PRISMX applies **Dual Spatial-Channel Gradient Gating** prior to SVD:
+$$\tilde{A}^k(u,v) = A^k(u,v) \cdot w_{ch}^k \cdot (M^c(u,v))^\gamma$$
+where:
+* **Feature-channel weights:** $w_{ch}^k = \frac{\text{ReLU}(\alpha_k^c)}{\max_m \alpha_m^c + \epsilon}$, with $\alpha_k^c = \frac{1}{HW}\sum_{u,v} \frac{\partial Y^c}{\partial A_{u,v}^k}$.
+* **Spatial saliency mask:** $M^c(u,v) = \frac{\text{ReLU}\left(\sum_k \alpha_k^c A_{u,v}^k\right)}{\max_{x,y} \sum_k \alpha_k^c A_{x,y}^k + \epsilon}$.
 
 #### Test Case 1: Alaskan Malamute + Boletus Mushroom (Exact Paper Figure 12)
 * **VGG-16 Output:** Malamute = 37.8%, Eskimo Dog = 35.2%, Husky = 24.5% (Total canine = 97.5%). Bolete Mushroom = 0.000000% (Zero).
 * **Standard PRISM:** Mushroom distractor had an energy of **1.015** (Dog-to-Mushroom Ratio = **1.05**; distractor treated with equal importance to the dog).
-* **Grad-PRISM (Ours):** Mushroom energy crushed to **0.643**, with spatial thresholding silencing the mushroom completely. Dog-to-Mushroom selectivity surged to **1.49 (+42.6% improvement)**.
+* **Grad-PRISM (Ours):** Mushroom energy reduced to **0.641**, with spatial-channel thresholding suppressing irrelevant background activations. Dog-to-Mushroom selectivity surged to **1.51 (+44.3% improvement)**.
 * **Output Artifact:** `outputs/malamute_mushroom_distractor_resolved.png`.
 
 #### Test Case 2: Black Widow Spider with Penny Coin (Exact Paper Figure 6)
 * **Standard PRISM:** Unsupervised SVD allocated a major color component directly to the shiny metallic coin (SDR = **1.27**).
-* **Grad-PRISM (Ours):** The coin distractor was **100% eliminated and blacked out**, isolating exclusively the spider's abdomen and legs.
+* **Grad-PRISM (Ours):** The coin distractor energy was suppressed (SDR > 1000), clearly isolating the spider's abdomen and legs.
 * **Output Artifact:** `outputs/spider_coin_distractor_resolved.png`.
 
 #### Test Case 3: Golden Retriever + Tabby Cat (Multi-Object Disentanglement)
 * **Standard PRISM:** Both dog and cat mixed together in the same 3-color map.
-* **Grad-PRISM (Target Dog):** Completely blacked out the cat, illuminating strictly the Golden Retriever.
-* **Grad-PRISM (Target Cat):** Completely blacked out the large dog, illuminating strictly the cat.
-* **Contrastive cPRISM:** Disentangled canine-specific facial features from feline features.
+* **Grad-PRISM (Target Dog):** Suppressed cat distractor energy, highlighting strictly the Golden Retriever.
+* **Grad-PRISM (Target Cat):** Suppressed large dog activations, highlighting strictly the cat.
+* **Contrastive cPRISM:** Disentangled canine-specific facial features from feline features counterfactually.
 * **Output Artifact:** `outputs/user_dog_cat_imp2_disentanglement.png`.
 
 #### Test Case 4: Car on Busy Street (Heavy Clutter Suppression)
 * **Standard PRISM:** Dozens of walking pedestrians, crosswalk stripes, and storefronts dominated the SVD components.
-* **Grad-PRISM for Vehicle:** Completely silenced the walking pedestrians on both sides of the street, isolating strictly the vehicle's front grille, headlights, hood, and windshield (**+7.3% SDR improvement**).
+* **Grad-PRISM for Vehicle:** Attenuated walking pedestrians and street background, focusing on the vehicle's front grille, headlights, hood, and windshield (**+7.3% SDR improvement**).
 * **Output Artifact:** `outputs/user_car_street_imp2_clutter_suppression.png`.
 
 ---
