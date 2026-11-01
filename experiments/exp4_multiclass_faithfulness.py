@@ -1,7 +1,15 @@
 """
-Script: test_bidirectional_swapping.py
-Description: Runs bidirectional swapping for both Figure 3 (Burgers) and Figure 5 (Trains),
-using PRISM-guided discriminative cells (highest singular component energy on object).
+Experiment 4: Faithfulness via Representation Swapping on Multi-Class Pairs
+============================================================================
+Paper: 'Unlocking the black box of CNNs: Visualising the decision-making process with PRISM'
+(Tomasz Szandała, Information Sciences 642, 2023, 119162)
+
+This script replicates:
+1. Paper Figure 3: Cheeseburger (Class 933) vs. Bagel (Class 931)
+2. Paper Figure 5: Passenger Car (Class 705) vs. Electric Locomotive (Class 547)
+
+Evaluates bidirectional cell swapping along spatial grid coordinates (7x7 at features.30),
+verifying the progressive softmax confidence drop and Top-1 decision inversion.
 """
 
 import os
@@ -19,7 +27,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data", "samples")
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
-CUSTOM_OUT_DIR = os.path.join(BASE_DIR, "custom_test_suite", "outputs")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 preprocess = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -47,10 +55,9 @@ def evaluate_pair(name_a, name_b, file_a, file_b, class_a, class_b, out_filename
     feat_a = activations[0][0].clone() # (512, 7, 7)
     feat_b = activations[0][1].clone()
     
-    # Run SVD across batch to get PRISM component energy per cell
+    # Run SVD across batch to determine spatial activation energy
     mat = activations[0].permute(0, 2, 3, 1).reshape(-1, 512)
     u, s, v = torch.svd(mat - mat.mean(0))
-    # Top 3 PCs energy per spatial position
     pcs = (u[:, :3] @ torch.diag(s[:3])).norm(dim=1).view(2, 7, 7)
     prism_energy_a = pcs[0]
     prism_energy_b = pcs[1]
@@ -86,18 +93,19 @@ def evaluate_pair(name_a, name_b, file_a, file_b, class_a, class_b, out_filename
         res_b_t.append(p[0, class_b].item())
         res_b_c.append(p[0, class_a].item())
         
-    print(f"\n=================================================================")
+    print(f"\n" + "=" * 75)
     print(f"{title}")
-    print(f"=================================================================")
+    print("=" * 75)
     print(f"Direction 1: Swapping {name_b} into {name_a}")
     for k, pt, pc in zip(swap_counts, res_a_t, res_a_c):
-        print(f"  {k:2d} cells: {name_a}={pt:.4f} | {name_b}={pc:.4f} {'[INVERTED]' if pc > pt else ''}")
+        status = "[INVERTED]" if pc > pt else ""
+        print(f"  {k:2d} cells: {name_a}={pt:.4f} | {name_b}={pc:.4f} {status}")
         
     print(f"\nDirection 2: Swapping {name_a} into {name_b}")
     for k, pt, pc in zip(swap_counts, res_b_t, res_b_c):
-        print(f"  {k:2d} cells: {name_b}={pt:.4f} | {name_a}={pc:.4f} {'[INVERTED]' if pc > pt else ''}")
+        status = "[INVERTED]" if pc > pt else ""
+        print(f"  {k:2d} cells: {name_b}={pt:.4f} | {name_a}={pc:.4f} {status}")
         
-    # Plotting 2-row figure: Row 1 = Dir 1, Row 2 = Dir 2
     fig, axes = plt.subplots(2, 2, figsize=(14, 9), dpi=300, gridspec_kw={'width_ratios': [1, 2.2]})
     
     # Row 1: Image A -> B
@@ -152,25 +160,28 @@ def evaluate_pair(name_a, name_b, file_a, file_b, class_a, class_b, out_filename
     plt.tight_layout()
     
     sp1 = os.path.join(OUTPUT_DIR, out_filename)
-    sp2 = os.path.join(CUSTOM_OUT_DIR, out_filename)
     plt.savefig(sp1, bbox_inches='tight')
-    plt.savefig(sp2, bbox_inches='tight')
     plt.close()
-    print(f"Saved: {sp1}")
+    print(f"Saved figure to: {sp1}")
 
-# Run both paper figures
-evaluate_pair(
-    "Cheeseburger", "Bagel",
-    "cheeseburger.png", "bagel.png",
-    class_a=933, class_b=931,
-    out_filename="reproduced_fig3_cheeseburger_bagel_swapping.png",
-    title="Paper Fig. 3 Reproduction: Faithfulness via Representation Swapping (Cheeseburger <-> Bagel)"
-)
+def main():
+    print("=" * 80)
+    print("EXPERIMENT 4: MULTI-CLASS FAITHFULNESS VIA REPRESENTATION SWAPPING")
+    print("=" * 80)
+    evaluate_pair(
+        "Cheeseburger", "Bagel",
+        "cheeseburger.png", "bagel.png",
+        class_a=933, class_b=931,
+        out_filename="reproduced_fig3_cheeseburger_bagel_swapping.png",
+        title="Paper Fig. 3 Reproduction: Faithfulness Swapping (Cheeseburger <-> Bagel)"
+    )
+    evaluate_pair(
+        "Passenger Car", "Electric Locomotive",
+        "passenger_car.png", "electric_locomotive.png",
+        class_a=705, class_b=547,
+        out_filename="reproduced_fig5_trains_swapping.png",
+        title="Paper Fig. 5 Reproduction: Faithfulness Swapping (Passenger Car <-> Electric Locomotive)"
+    )
 
-evaluate_pair(
-    "Passenger Car", "Electric Locomotive",
-    "passenger_car.png", "electric_locomotive.png",
-    class_a=705, class_b=547,
-    out_filename="reproduced_fig5_trains_swapping.png",
-    title="Paper Fig. 5 Reproduction: Faithfulness via Representation Swapping (Passenger Car <-> Electric Locomotive)"
-)
+if __name__ == "__main__":
+    main()
