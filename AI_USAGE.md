@@ -98,8 +98,8 @@ AI-generated code was treated as a draft and subjected to rigorous technical rev
    * *Modification:* The researcher unified both mechanisms into rigorous **Dual Spatial-Channel Gating**: $\tilde{A}^k(u,v) = A^k(u,v) \cdot w_{ch}^k \cdot (M^c(u,v))^\gamma$, filtering out negative channels while attenuating distractor spatial coordinates simultaneously.
 6. **Elimination of Hardcoded Class IDs and Provenance Tracking:**
    * *Modification:* The researcher replaced raw magic numbers (e.g., 269, 272) with dynamic class lookup via `src/torchprism/metadata.py`, and added automated logging (`outputs/experiment_metadata.json`) capturing environment, hardware, GPU architecture, and output metrics.
-7. **Automated Unit Testing & Dependency Pinning:**
-   * *Modification:* The researcher authored an automated unit test suite (`tests/run_tests.py`) and pinned environment lockfile (`requirements-pinned.txt`) to ensure cross-platform reproducibility and CI verification.
+7. **Automated Unit Testing & Dependency Specification:**
+   * *Modification:* The researcher authored an automated unit test suite (`tests/run_tests.py`) and unified dependency specification (`requirements.txt`) to ensure cross-platform reproducibility and CI verification.
 
 ---
 

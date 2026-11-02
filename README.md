@@ -260,11 +260,10 @@ PRISMX/
 │   ├── test_improvements.py            # Spectral reconstruction & dual gating tests
 │   └── run_tests.py                    # Master test runner
 ├── AI_USAGE.md                         # Formal academic AI usage disclosure
-├── EXPERIMENTAL_RESULTS.md             # Detailed quantitative results report
+├── EXPERIMENTAL_RESULTS_AND_COMPARISON.md # Complete experimental results & comparison report
 ├── RESEARCH_GAP.md                     # 1-page theoretical research gap report
 ├── README.md                           # Master project documentation
-├── requirements.txt                    # Loose dependency bounds
-├── requirements-pinned.txt             # Exact pinned versions for complete reproducibility
+├── requirements.txt                    # Project environment dependencies
 ├── run_all.py                          # Master execution pipeline
 └── .gitignore                          # Standard repository ignore file
 ```
@@ -278,8 +277,8 @@ PRISMX/
 git clone https://github.com/gourav18dart/PRISMX.git
 cd PRISMX
 
-# Install via exact pinned reproducibility lockfile:
-pip install -r requirements-pinned.txt
+# Install dependencies:
+pip install -r requirements.txt
 ```
 
 ### 2. Run Automated Unit Test Suite
@@ -307,7 +306,6 @@ python custom_test_suite/run_all_custom.py
 * **Part A (Research Gap):** [RESEARCH_GAP.md](RESEARCH_GAP.md) — 1-page paper-style theoretical research gap analysis.
 * **Part B (AI Usage Disclosure):** [AI_USAGE.md](AI_USAGE.md) — Academic disclosure covering tools, standardized prompts, and human verification.
 * **Part C (Experimental Results & Comparison):** [EXPERIMENTAL_RESULTS_AND_COMPARISON.md](EXPERIMENTAL_RESULTS_AND_COMPARISON.md) — Complete report containing original paper page citations, reproduction benchmarks, supporting academic literature, before-and-after tables, and multi-domain evaluations.
-* **Extended Results Log:** [EXPERIMENTAL_RESULTS.md](EXPERIMENTAL_RESULTS.md) — Full numerical tables and replication sweeps.
 
 ---
 
@@ -334,6 +332,5 @@ For academic evaluation, here is the transparent breakdown of all original, modi
 | **`tests/test_torchprism.py`** | **NEW** | Automated unit tests for SVD variance conservation, singular value monotonicity, and metadata resolution. |
 | **`tests/test_improvements.py`** | **NEW** | Automated unit tests for rank-$K$ reconstruction convergence and Dual Spatial-Channel Gating bounds. |
 | **`tests/run_tests.py`** | **NEW** | Master automated test runner (8/8 passing). |
-| **`requirements-pinned.txt`** | **NEW** | Pinned dependency lockfile (`torch==2.5.1`, `torchvision==0.20.1`, etc.) for exact cross-platform reproducibility. |
 | **`.github/workflows/ci.yml`** | **NEW** | Automated GitHub Actions CI workflow executing unit tests on Python 3.10, 3.11, and 3.12. |
 | **`run_all.py`** | **NEW** | Master end-to-end pipeline orchestrating automated unit tests and all 11 experimental benchmarks in sequence. |
