@@ -10,128 +10,100 @@ This repository contains the complete reproduction and novel research extensions
 ---
 
 ## Table of Contents
-1. [Executive Summary and Value Proposition](#executive-summary-and-value-proposition)
-2. [The 2-Minute Quick Pitch (Presentation Summary)](#the-2-minute-quick-pitch-presentation-summary)
-3. [Deep Dive into Limitation 1: The 3-PCA Bottleneck](#deep-dive-into-limitation-1-the-3-pca-bottleneck)
-4. [Deep Dive into Limitation 2: Target-Agnostic Distractor Contamination](#deep-dive-into-limitation-2-target-agnostic-distractor-contamination)
-5. [Summary of Benchmarks and Findings](#summary-of-benchmarks-and-findings)
-6. [Phase 1: Published Paper Reproduction](#phase-1-published-paper-reproduction)
-7. [Phase 2: Novel Research Extensions (PRISMX)](#phase-2-novel-research-extensions-prismx)
-8. [Interactive Custom Testing Suite](#interactive-custom-testing-suite)
-9. [Viva and Examination FAQ](#viva-and-examination-faq)
-10. [Repository Architecture](#repository-architecture)
-11. [Installation, Testing, and Execution](#installation-testing-and-execution)
-12. [Formal Submission Documents & Repository Link](#formal-submission-documents--repository-link)
-13. [Identification of Modified and New Files (Source Code Breakdown)](#identification-of-modified-and-new-files-source-code-breakdown)
+1. [Overview](#overview)
+2. [Theoretical Analysis of Original Method Limitations](#theoretical-analysis-of-original-method-limitations)
+3. [Summary of Benchmarks and Findings](#summary-of-benchmarks-and-findings)
+4. [Phase 1: Published Paper Reproduction](#phase-1-published-paper-reproduction)
+5. [Phase 2: Proposed PRISMX Extensions](#phase-2-proposed-prismx-extensions)
+6. [Interactive Custom Testing Suite](#interactive-custom-testing-suite)
+7. [Repository Architecture](#repository-architecture)
+8. [Installation, Testing, and Execution](#installation-testing-and-execution)
+9. [Formal Submission Documents & Repository Link](#formal-submission-documents--repository-link)
+10. [Identification of Modified and New Files](#identification-of-modified-and-new-files)
 
 ---
 
-## Executive Summary and Value Proposition
+## Overview
 
-Explainable AI (XAI) for Convolutional Neural Networks (CNNs) has historically relied on Class Activation Mapping (CAM, Grad-CAM). However, CAM methods generate coarse, low-resolution heatmaps that reveal *where* a model looks, but fail to explain *what features* were detected.
+Explainable Artificial Intelligence (XAI) for Convolutional Neural Networks (CNNs) has predominantly utilized Class Activation Mapping (CAM, Grad-CAM). However, CAM methods generate coarse spatial heatmaps that identify regions of interest without isolating individual semantic features.
 
-**PRISM (Principal Image Sections Mapping)** addresses this by applying Singular Value Decomposition (SVD) to the final convolutional feature maps ($512 \times 7 \times 7$ in VGG-16). By projecting singular components into RGB channels and upsampling via Gradual Extrapolation (GE), PRISM generates color-coded, high-resolution feature sections that isolate distinct anatomical traits (e.g., body contours vs. facial markings).
+**PRISM (Principal Image Sections Mapping)** addresses this limitation by applying Singular Value Decomposition (SVD) to the final convolutional feature maps ($512 \times 7 \times 7$ in VGG-16). By projecting singular components into RGB channels and upsampling via Gradual Extrapolation (GE), PRISM generates color-coded, high-resolution feature sections corresponding to distinct anatomical and structural components.
 
-Our research:
-1. **Replicates 100% of the paper's core experiments** with exact numerical consistency.
-2. **Identifies and resolves two fundamental theoretical limitations** in PRISM:
-   * **The 3-PCA Representation Bottleneck:** Resolving severe information loss and restoring true decision fidelity.
-   * **Target-Agnostic Distractor Contamination:** Eliminating background interference using pre-SVD class-gradient gating.
-
----
-
-## The 2-Minute Quick Pitch (Presentation Summary)
-
-In 2023, Tomasz Szandała published PRISM to overcome the limitations of Grad-CAM: Grad-CAM only shows blurry blobs of where a CNN looks, but cannot distinguish individual features. PRISM extracts the CNN's final 512 feature channels, runs SVD, and produces sharp, color-coded feature sections.
-
-While PRISM was an exciting step forward, we discovered **two critical limitations**:
-
-1. **The 3-PCA Representation Bottleneck:** Because computer screens only display 3 colors (Red, Green, Blue), the author forcibly squeezed 512 dimensions into just **3 principal components**. We proved mathematically and empirically that this discards **43.5% to 57.7% of the model's visual memory**, causing the model's prediction confidence to collapse from **0.93 down to 0.47**. PRISM was explaining an artificial, severely degraded proxy rather than the real, confident neural network.
-2. **Class-Agnostic Distractors:** PRISM is completely unsupervised and class-blind. In Figure 12 of the paper, when shown an Alaskan Malamute next to a mushroom, PRISM brightly painted the mushroom, even though the CNN completely ignored it (0.00% mushroom confidence). The author tried to fix this by pasting Grad-CAM on top after SVD, but that is a post-hoc band-aid on an already corrupted mathematical basis.
-
-**Our Proposed PRISMX Solutions:**
-1. **High-Variance Manifold PRISM:** Dynamically retains components to guarantee $\ge 85\%$ variance (15 PCs), and decomposes them into **3 Spectral Bands** (Tier 1 Macro, Tier 2 Contours, Tier 3 Textures). This cut feature reconstruction error from 59.2% to 32.8% and restored prediction confidence back to **0.902** (**True Model Fidelity Restored**).
-2. **Class-Attentive Grad-PRISM:** Computes class-specific gradients **before** running SVD. Irrelevant background distractors (mushrooms, coins, pedestrians) are zeroed out prior to eigenvector calculation, completely silencing distractors and boosting target selectivity by **+42.6%**.
+This repository:
+1. Re-implements and verifies all primary paper experiments with reproducible consistency.
+2. Formulates and resolves two theoretical limitations:
+   * **The 3-PCA Representation Bottleneck:** Alleviates feature variance loss and restores model prediction certainty.
+   * **Target-Agnostic Distractor Contamination:** Eliminates background interference using pre-SVD dual spatial-channel gradient gating.
 
 ---
 
-## Deep Dive into Limitation 1: The 3-PCA Bottleneck
+## Theoretical Analysis of Original Method Limitations
 
-### 1. Plain English Analogy
-Imagine taking a high-definition 4K video of a painting, deleting 45% of the video frames, blurring the resolution down to 240p, and then asking an art critic to evaluate the master artist's brushwork. The critic is not reviewing the true painting; they are reviewing a ruined, low-quality copy. This is what standard PRISM does to the neural network.
+### Limitation 1: The 3-PCA Representation Bottleneck
 
-### 2. Technical Cause
-* In VGG-16, the final convolutional layer (`features.30`) outputs 512 feature channels across a $7 \times 7$ grid.
-* Because human vision and computer displays are restricted to 3 color channels, PRISM hardcoded $K=3$:
-  $$PC_1 \rightarrow \text{Red}, \quad PC_2 \rightarrow \text{Green}, \quad PC_3 \rightarrow \text{Blue}$$
-* All remaining 509 dimensions ($PC_4$ through $PC_{512}$) were discarded.
+#### Technical Cause
+In VGG-16, layer `features.30` outputs 512 channels across a $7 \times 7$ spatial grid. To render outputs onto standard 3-channel RGB displays, PRISM hardcodes $K=3$:
+$$PC_1 \rightarrow \text{Red}, \quad PC_2 \rightarrow \text{Green}, \quad PC_3 \rightarrow \text{Blue}$$
+All remaining 509 dimensions ($PC_4$ through $PC_{512}$) are discarded.
 
-### 3. Empirical Proof of Damage
-1. **Information Loss (SVD Scree Analysis):**
-   * On 2 canine classes (Wolf and Coyote), the top 3 components capture only **56.5% variance** (**43.5% lost**).
-   * On 5 canine classes (Wolf, Coyote, Samoyed, Collie, Fox), top-3 components capture only **42.3% variance** (**57.7% lost**).
-2. **Classifier Confidence Collapse (Fidelity Deficit):**
-   * We reconstructed the feature tensor using only 3 PCs: $\hat{F}_3 = U_3 S_3 V_3^T + \mu$, and passed it through `model.classifier`:
-     * **Coyote:** Confidence crashed from **0.9255 down to 0.4740** (a 45% collapse).
-     * **Timber Wolf:** Confidence crashed from **0.9118 down to 0.6035** (a 31% collapse).
-   * Standard PRISM suffers from a severe **Fidelity Deficit**: it explains a degraded representation where the model's certainty is halved.
+#### Empirical Evaluation
+1. **Variance Loss:**
+   * On 2 canine classes (Wolf and Coyote), the top 3 components capture **56.5% variance** (**43.5% lost**).
+   * On 5 canine classes (Wolf, Coyote, Samoyed, Collie, Fox), top-3 components capture **42.3% variance** (**57.7% lost**).
+2. **Classifier Confidence Collapse:**
+   Passing the reconstructed tensor $\hat{F}_3 = U_3 S_3 V_3^T + \mu$ through `model.classifier`:
+   * **Coyote:** Softmax probability drops from **0.9255 down to 0.4740** (a 45% reduction).
+   * **Timber Wolf:** Softmax probability drops from **0.9118 down to 0.6035** (a 31% reduction).
 
-### 4. Our PRISMX Solution
+#### PRISMX Solution
 * **Adaptive Variance Threshold ($\ge 85\%$):** Dynamically selects $K$ (e.g., $K=14\text{--}15$) to preserve at least 85% of total variance.
-* **Methodological Distinction (Reconstruction vs Projection):**
-  * **SVD Feature Reconstruction ($\hat{F}_{15} \in \mathbb{R}^{B \times 512 \times 7 \times 7}$):** $\hat{F}_{15} = U_{15} S_{15} V_{15}^T + \mu$ reconstructs the full 512-channel feature tensor, which is fed into `model.classifier` to benchmark true classification preservation.
-  * **SVD 3-Channel Visualization Projection ($P_3 \in \mathbb{R}^{B \times 3 \times 7 \times 7}$):** A variance-weighted linear projection matrix $W \in \mathbb{R}^{K \times 3}$ ($W_{i, i \bmod 3} = S_i / S_0$) maps $K \ge 15$ dimensions into an interpretable 3-channel RGB image for human visual inspection.
+* **Feature Reconstruction vs. Visualization Projection:**
+  * **SVD Feature Reconstruction ($\hat{F}_{15} \in \mathbb{R}^{B \times 512 \times 7 \times 7}$):** $\hat{F}_{15} = U_{15} S_{15} V_{15}^T + \mu$ reconstructs the 512-channel feature tensor, passed into `model.classifier` to verify prediction preservation.
+  * **SVD 3-Channel Projection ($P_3 \in \mathbb{R}^{B \times 3 \times 7 \times 7}$):** A variance-weighted linear projection matrix $W \in \mathbb{R}^{K \times 3}$ ($W_{i, i \bmod 3} = S_i / S_0$) maps $K \ge 15$ dimensions into an RGB representation for visual inspection.
 * **Hierarchical Spectral-Band Decomposition:** Splits the 15 components into 3 dedicated visual tiers:
-  * **Tier 1 (PCs 1–3: Macro):** Coarse body silhouette and broad anatomical mass.
-  * **Tier 2 (PCs 4–6: Contours):** Sharp structural edges, muzzle outlines, and ear frames.
-  * **Tier 3 (PCs 7–9: Textures):** High-frequency fur striations, whiskers, sesame seeds, and mechanical wires.
-* **Results:** Relative feature reconstruction error dropped from **59.2% down to 32.8%**, and top-1 prediction confidence returned to **0.902** (restoring over 97% of the original uncompressed model certainty).
+  * **Tier 1 (PCs 1–3: Macro):** Coarse body silhouettes and broad anatomical mass.
+  * **Tier 2 (PCs 4–6: Contours):** Structural edges, muzzle outlines, and ear perimeters.
+  * **Tier 3 (PCs 7–9: Textures):** High-frequency fur striations, whiskers, and mechanical details.
+* **Results:** Relative feature reconstruction error drops from **59.2% to 32.8%**, and top-1 prediction confidence returns to **0.902**.
 
 ---
 
-## Deep Dive into Limitation 2: Target-Agnostic Distractor Contamination
+### Limitation 2: Target-Agnostic Distractor Contamination
 
-### 1. Plain English Analogy
-Imagine a police witness testifying in court. When asked: *"Did you see the bank robber?"*, the witness points enthusiastically at a flashy neon advertising sign across the street because it is bright and colorful, completely ignoring the robber. Standard PRISM does the exact same thing: it gets distracted by whatever has high visual contrast in the background.
+#### Technical Cause
+* PRISM computes SVD in an unsupervised manner based on maximum spatial activation variance, without conditioning on the predicted class label.
+* High-contrast background elements (e.g., a mushroom in a forest, a metallic coin, or pedestrians) dominate activation variance and are assigned primary color channels, creating the false visual impression of model relevance.
 
-### 2. Technical Cause
-* PRISM applies SVD in an **unsupervised, class-agnostic** manner.
-* SVD searches purely for mathematical variance across pixel activations, without knowing what class the network predicted.
-* If an image contains an irrelevant object with sharp edges or high contrast (e.g., a mushroom in a forest, a shiny coin next to a spider, or pedestrians crossing near a car), SVD treats the distractor as a primary principal component.
-* One of PRISM's 3 RGB color channels is allocated to the distractor, falsely implying the CNN used it for classification.
-
-### 3. Empirical Proof of Damage
+#### Empirical Evaluation
 1. **Malamute + Mushroom (Paper Figure 12):**
-   * VGG-16 predicted Malamute (37.8%), Eskimo Dog (35.2%), and Husky (24.5%) — total canine confidence of **97.5%**. Bolete Mushroom probability was **0.000000% (Zero)**.
-   * Standard PRISM brightly colored the mushroom with a primary color channel! Mushroom energy was **1.015** (Dog-to-Mushroom Ratio = **1.05**; distractor treated with equal importance to the dog).
+   * VGG-16 predicts Malamute (37.8%), Eskimo Dog (35.2%), and Husky (24.5%) — total canine confidence of **97.5%**. Bolete Mushroom probability is **0.0000%**.
+   * Standard PRISM allocates a primary color channel to the mushroom with an activation energy of **1.015** (Dog-to-Mushroom Ratio = **1.05**).
 2. **Black Widow + Penny Coin (Paper Figure 6):**
-   * CNN predicted Black Widow (85.7%). PRISM allocated a major color component to the metallic coin (SDR = 1.27).
-3. **The Paper's Failed Workaround:**
-   * In Section 4.2, the author alpha-blended Grad-CAM over PRISM (`--saliency grad_cam`).
-   * **Why this fails mathematically:** SVD was performed *first*. The distractor had already stolen one of the 3 components. Pasting a blurry $7 \times 7$ Grad-CAM blob over a damaged PRISM map merely conceals corrupted features under blur; it does not correct the mathematical basis.
+   * CNN predicts Black Widow (85.7%). PRISM allocates a major color component to the metallic coin ($\text{SDR} = 1.27$).
+3. **Failure of Post-Hoc Overlay:**
+   * Alpha-blending Grad-CAM over PRISM (`--saliency grad_cam`) fails because SVD has already assigned components to the distractor prior to masking.
 
-### 4. Our PRISMX Solution: Dual Spatial-Channel Gradient Gating
-* **Dual Spatial-Channel Grad-PRISM:** To eliminate the discrepancy between spatial masking and channel importance, PRISMX applies **both** channel gradient weighting and spatial saliency modulation *before* SVD:
+#### PRISMX Solution: Dual Spatial-Channel Gradient Gating
+* **Formulation:** Applies channel gradient weighting and spatial saliency modulation prior to SVD:
   $$\tilde{A}^k(u,v) = A^k(u,v) \cdot w_{ch}^k \cdot (M^c(u,v))^\gamma$$
-  * **Feature-Channel Gradient Gating ($w_{ch}^k$):** Filters channels based on their pooled positive gradient contribution:
+  * **Feature-Channel Gradient Gating ($w_{ch}^k$):** Filters channels by pooled positive gradient contribution:
     $$w_{ch}^k = \frac{\text{ReLU}(\alpha_k^c)}{\max_m \alpha_m^c + \epsilon}, \quad \alpha_k^c = \frac{1}{HW}\sum_{u,v}\frac{\partial Y^c}{\partial A_{u,v}^k}$$
-  * **Spatial Attentive Modulation ($M^c(u,v)$):** Modulates spatial activations by the normalized Grad-CAM saliency mask raised to focus exponent $\gamma \ge 1.8$:
+  * **Spatial Attentive Modulation ($M^c(u,v)$):** Modulates spatial activations by normalized Grad-CAM saliency:
     $$M^c(u,v) = \frac{\text{ReLU}\left(\sum_k \alpha_k^c A_{u,v}^k\right)}{\max_{x,y}\sum_k \alpha_k^c A_{x,y}^k + \epsilon}$$
-* Channels with zero or negative relevance to target class $c$ are zeroed out, and distractor spatial coordinates are attenuated prior to eigenvector computation.
 * **Contrastive cPRISM:** Disentangles overlapping competing classes counterfactually:
   $$w_{\text{contrast}}^k = \frac{\text{ReLU}(\alpha_k^{c_1} - \alpha_k^{c_2})}{\max_m (\alpha_m^{c_1} - \alpha_m^{c_2}) + \epsilon}$$
-* **Results:** Mushroom energy dropped from 1.015 to 0.641; target selectivity improved by **+44.3%**. Coin distractor energy was suppressed, raising Signal-to-Distractor Ratio from 1.27 to > 1000.
+* **Results:** Mushroom energy drops from 1.015 to 0.641; target selectivity improves by **+44.3%**. Coin distractor energy is attenuated ($\text{SDR} > 1000$).
 
 ---
 
 ## Summary of Benchmarks and Findings
 
-| Metric / Experiment | Paper Baseline | Our Reproduction | Our Proposed PRISMX | Research Significance |
+| Metric / Experiment | Paper Baseline | Our Reproduction | Proposed PRISMX | Significance |
 | :--- | :---: | :---: | :---: | :--- |
-| **Faithfulness Drop (5 cells)** | 0.54 drop | **0.52 drop** | N/A | Close replication within empirical margin |
+| **Faithfulness Drop (5 cells)** | 0.54 drop | **0.51 drop** | N/A | Close replication within empirical margin |
 | **Class Decision Inversion** | Fig. 4, 3, 5 inverted | **Inverted across all pairs** | N/A | Verified on canines, food, trains |
-| **Spider Exclusive Cells (Fig. 6)** | 6, 15, 21 cells | **6, 15, 21 cells** | N/A | Exact reproduction of published cell counts |
-| **Top-3 Variance (5 Canines, Fig. 17)**| ~40% variance | **42.3% variance** | N/A | Verified severe multi-class variance drop |
+| **Spider Exclusive Cells (Fig. 6)** | 6, 15, 21 cells | **6, 15, 21 cells** | N/A | Exact match to published cell counts |
+| **Top-3 Variance (5 Canines, Fig. 17)**| ~40% variance | **42.3% variance** | N/A | Multi-class variance drop verified |
 | **Variance Retained (Information)** | 56.5% (43.5% lost) | 56.5% (43.5% lost) | **86.7% (13.3% lost)** | **+30.2% variance preserved** |
 | **Decision Fidelity (Coyote)** | 0.4740 (collapsed) | 0.4740 (collapsed) | **0.9020 (restored)** | **+42.8% confidence recovery** |
 | **Decision Fidelity (Wolf)** | 0.6035 (collapsed) | 0.6035 (collapsed) | **0.9017 (restored)** | **+29.8% confidence recovery** |
@@ -143,53 +115,51 @@ Imagine a police witness testifying in court. When asked: *"Did you see the bank
 
 ## Phase 1: Published Paper Reproduction
 
-### 1. Faithfulness via Representation Swapping (Section 3.1)
-* **Wolves & Canines (`experiments/exp1_faithfulness.py`):** Replicated the 5-cell drop ($0.93 \rightarrow 0.41$, drop of 0.52 vs paper's 0.54 benchmark) and full Top-1 decision inversion on 9–15 cells (Coyote becomes Wolf $0.60$ vs $0.13$; Wolf becomes Coyote $0.60$ vs $0.23$). Output: `outputs/reproduced_fig4_complete_inversion.png`.
-* **Food & Trains (`experiments/exp4_multiclass_faithfulness.py`):**
-  * Cheeseburger vs Bagel (Fig. 3): 6-cell swap causes complete class flip ($0.73 \rightarrow 0.08$ vs Bagel $0.20$). Output: `outputs/reproduced_fig3_cheeseburger_bagel_swapping.png`.
-  * Passenger Car vs Locomotive (Fig. 5): Immediate flip at 2 cells ($0.55 \rightarrow 0.35$ vs Car $0.56$). Output: `outputs/reproduced_fig5_trains_swapping.png`.
+### 1. Faithfulness via Representation Swapping (`experiments/exp1_faithfulness.py`, `experiments/exp4_multiclass_faithfulness.py`)
+* **Canines (Figure 4):** 5-cell swap replicates the confidence drop ($0.93 \rightarrow 0.42$, drop of 0.51 vs. 0.54 paper benchmark). Full head swap induces Top-1 classification inversion (Coyote becomes Wolf $0.60$ vs. $0.13$; Wolf becomes Coyote $0.60$ vs. $0.23$). Output: `outputs/reproduced_fig4_complete_inversion.png`.
+* **Food & Trains (Figures 3 & 5):**
+  * Cheeseburger vs. Bagel (Fig. 3): 6-cell swap flips prediction ($0.73 \rightarrow 0.08$ vs. Bagel $0.20$). Output: `outputs/reproduced_fig3_cheeseburger_bagel_swapping.png`.
+  * Passenger Car vs. Locomotive (Fig. 5): Inversion occurs at 2 cells ($0.55 \rightarrow 0.35$ vs. Car $0.56$). Output: `outputs/reproduced_fig5_trains_swapping.png`.
 
-### 2. Interpretability Insight & Exclusive Feature Isolation (Section 3.2)
-* **Spider Trio (`experiments/exp2_interpretability.py`):** Grad-CAM produces identical coarse circular blobs across all three spiders. PRISM Exclusive features isolate exact cell sections: Black Widow 1 (**6 cells**), Garden Spider (**15 cells**), and Black Widow with Penny Coin (**21 cells**). Output: `outputs/reproduced_fig6_exact_spiders.png`.
-* **Passenger Car vs Locomotive (`experiments/exp2_trains_interpretability.py`):** PRISM Exclusive isolates the passenger window strip for the car, and the pantograph roof/cab/stripes for the locomotive. Output: `outputs/reproduced_trains_interpretability_cam_vs_prism.png`.
+### 2. Interpretability and Exclusive Feature Isolation (`experiments/exp2_interpretability.py`, `experiments/exp2_trains_interpretability.py`)
+* **Spiders (Figure 6):** Validates active exclusive cell counts on exact spider crops: Black Widow 1 (**6 cells**), Garden Spider (**15 cells**), Black Widow with Penny Coin (**21 cells**). Output: `outputs/reproduced_fig6_exact_spiders.png`.
+* **Trains (Figure 7):** PRISM Exclusive isolates passenger window strips for passenger cars and pantograph roof structures for locomotives. Output: `outputs/reproduced_trains_interpretability_cam_vs_prism.png`.
 
-### 3. SVD Variance Distribution Analysis (Section 4.1)
-* **Variance Analysis (`experiments/exp3_variance_analysis.py`):**
-  * 2-Class Canine Set (Wolf & Coyote): Top-3 capture **56.5% variance** (43.5% discarded). Output: `outputs/reproduced_fig16_variance_2classes.png`.
-  * 5-Class Canine Set: Top-3 drop to **42.3% variance** (57.7% discarded). Output: `outputs/reproduced_fig17_exact_5classes.png`.
+### 3. SVD Variance Distribution Analysis (`experiments/exp3_variance_analysis.py`)
+* 2-Class Canine Set: Top-3 capture **56.5% variance** (43.5% discarded). Output: `outputs/reproduced_fig16_variance_2classes.png`.
+* 5-Class Canine Set: Top-3 drop to **42.3% variance** (57.7% discarded). Output: `outputs/reproduced_fig17_exact_5classes.png`.
 
 ---
 
-## Phase 2: Novel Research Extensions (PRISMX)
+## Phase 2: Proposed PRISMX Extensions
 
-### 1. Resolving the 3-PCA Bottleneck (`improvements/imp1_resolve_3pca_bottleneck.py`)
-* Implements High-Variance Manifold PRISM ($\ge 85\%$ variance, $K=15$) and 3-Tier Spectral Bands. Output: `outputs/solution_3pca_scree_fidelity.png` and `outputs/solution_3pca_spectral_bands.png`.
+### 1. High-Variance Manifold PRISM & Spectral Bands (`improvements/imp1_resolve_3pca_bottleneck.py`)
+* Retains $\ge 85\%$ variance ($K=15$) and implements 3-tier Spectral Bands. Outputs: `outputs/solution_3pca_scree_fidelity.png`, `outputs/solution_3pca_spectral_bands.png`.
 * Side-by-side 3-case fidelity cards (`experiments/eval_fidelity_comparison.py`). Output: `outputs/fidelity_and_variance_comparison.png`.
-* Unveiling the missing PCs 4–15 residual energy heatmap (`experiments/eval_wolf_difference_revealed.py`). Output: `outputs/wolf_3cases_difference_revealed.png`.
+* Residual energy heatmap for PCs 4–15 (`experiments/eval_wolf_difference_revealed.py`). Output: `outputs/wolf_3cases_difference_revealed.png`.
 
-### 2. Resolving Class-Agnostic Distractors (`improvements/imp2_class_attentive_grad_prism.py`)
-* Pre-SVD gradient gating and contrastive cPRISM. Output: `outputs/solution_distractors_grad_prism.png`.
-* Fig. 12 Malamute + Mushroom distractor resolution (`experiments/eval_distractor_malamute_mushroom.py`). Output: `outputs/malamute_mushroom_distractor_resolved.png`.
+### 2. Class-Attentive Grad-PRISM & cPRISM (`improvements/imp2_class_attentive_grad_prism.py`)
+* Implements Dual Spatial-Channel Gradient Gating and contrastive counterfactual analysis. Output: `outputs/solution_distractors_grad_prism.png`.
+* Evaluates distractor resolution on Malamute + Mushroom (`experiments/eval_distractor_malamute_mushroom.py`). Output: `outputs/malamute_mushroom_distractor_resolved.png`.
 
-### 3. Multi-Domain Validation (`experiments/eval_multidomain_improvements.py`)
-Evaluates both improvements across diverse domains:
-* Electric Locomotive: Intricate roof pantographs recovered ($47.8\% \rightarrow 87.6\%$). Output: `outputs/locomotive_imp1_spectral_fidelity.png`.
-* Cheeseburger: Fine sesame seeds isolated ($56.2\% \rightarrow 89.4\%$). Output: `outputs/cheeseburger_imp1_spectral_fidelity.png`.
-* Black Widow + Coin: Metallic distractor completely silenced (SDR > 1000). Output: `outputs/spider_coin_distractor_resolved.png`.
-* Golden Retriever + Tabby Cat: Complete multi-object disentanglement. Outputs: `outputs/user_dog_cat_imp1_spectral_fidelity.png` and `outputs/user_dog_cat_imp2_disentanglement.png`.
-* Car on Busy Street: Heavy pedestrian crowd clutter suppressed. Outputs: `outputs/user_car_street_imp1_spectral_fidelity.png` and `outputs/user_car_street_imp2_clutter_suppression.png`.
+### 3. Multi-Domain Generalization (`experiments/eval_multidomain_improvements.py`)
+* **Electric Locomotive:** Recovers roof pantograph structures ($47.8\% \rightarrow 87.6\%$). Output: `outputs/locomotive_imp1_spectral_fidelity.png`.
+* **Cheeseburger:** Isolates fine sesame seed textures ($56.2\% \rightarrow 89.4\%$). Output: `outputs/cheeseburger_imp1_spectral_fidelity.png`.
+* **Black Widow + Coin:** Attenuates metallic distractor ($\text{SDR} > 1000$). Output: `outputs/spider_coin_distractor_resolved.png`.
+* **Golden Retriever + Cat:** Disentangles overlapping animal representations. Outputs: `outputs/user_dog_cat_imp1_spectral_fidelity.png`, `outputs/user_dog_cat_imp2_disentanglement.png`.
+* **Street Car:** Suppresses dense pedestrian clutter. Outputs: `outputs/user_car_street_imp1_spectral_fidelity.png`, `outputs/user_car_street_imp2_clutter_suppression.png`.
 
 ---
 
 ## Interactive Custom Testing Suite
 
-A dedicated testing framework is included in `custom_test_suite/` to evaluate any arbitrary input images:
+A modular testing pipeline is provided in `custom_test_suite/` to evaluate arbitrary input images:
 
-1. Drop any image(s) into:
+1. Place image(s) into:
    ```text
    custom_test_suite/input_data/
    ```
-2. Run the custom suite runner:
+2. Run the pipeline:
    ```bash
    python custom_test_suite/run_all_custom.py
    ```
@@ -197,27 +167,6 @@ A dedicated testing framework is included in `custom_test_suite/` to evaluate an
    ```text
    custom_test_suite/outputs/
    ```
-
-You can also specify custom directories:
-```bash
-python custom_test_suite/run_all_custom.py --input_dir path/to/images --output_dir path/to/results
-```
-
----
-
-## Viva and Examination FAQ
-
-### Q1: What is the primary difference between Grad-CAM and PRISM?
-* **Answer:** Grad-CAM produces coarse, low-resolution heatmaps showing *where* a CNN is looking (spatial saliency). PRISM uses SVD on convolutional activations to decompose channels into distinct, color-coded visual feature sections, showing *what specific features* (e.g., nose stain, ear shape, window strip) were detected.
-
-### Q2: Why did PRISM lose confidence when using 3 PCs?
-* **Answer:** CNNs rely on hundreds of distributed channels (e.g., 512 in VGG-16). Compressing 512 dimensions into 3 principal components discards 43.5% to 57.7% of the feature variance. When the reconstructed features are passed into the classifier, the network lacks the evidence it needs, collapsing prediction confidence from 0.93 down to 0.47.
-
-### Q3: Why did 3-PC and 15-PC images look similar to human eyes in the preliminary test?
-* **Answer:** This is the *3-Channel Display Illusion*. Computer monitors only have 3 color channels (Red, Green, Blue). When 15 dimensions are compressed into 3 RGB channels, the first 3 components (which carry 56.5% of variance) dominate the colors, masking subtle color shifts of components 4 through 15. However, the CNN classifier evaluates full 15-dimensional numbers, which is why its confidence jumped from 0.60 to 0.902. To make this visible to human eyes, our Spectral Bands separate components into 3 distinct visual tiers (Macro, Contours, Textures).
-
-### Q4: Why is Pre-SVD Gating superior to the paper's Post-Hoc Grad-CAM blend?
-* **Answer:** In the paper's post-hoc approach, SVD has already been calculated, meaning high-contrast distractors have already stolen one of the 3 components. Blending Grad-CAM on top merely pastes a blurry sticker over an already corrupted decomposition. Our Pre-SVD Dual Spatial-Channel Gating attenuates distractor channels and coordinates *before* SVD, ensuring the calculated eigenvectors isolate class-salient features directly.
 
 ---
 
@@ -227,15 +176,15 @@ python custom_test_suite/run_all_custom.py --input_dir path/to/images --output_d
 PRISMX/
 ├── .github/workflows/ci.yml            # Automated GitHub Actions CI workflow
 ├── custom_test_suite/                  # Interactive Custom Testing Framework
-│   ├── input_data/                     # Drop arbitrary input images here
+│   ├── input_data/                     # Directory for custom input images
 │   ├── outputs/                        # Output figures from custom tests
 │   └── run_all_custom.py               # Master CLI runner for custom inputs
-├── data/                               # Dataset and Benchmark Images
+├── data/                               # Datasets and benchmark images
 │   ├── samples/                        # Canines, burgers, trains, and distractors
 │   ├── spiders/                        # Exact spider crops from Paper Figure 6
 │   ├── five_canines/                   # Exact 5 canine classes from Paper Figure 14
 │   └── composites/                     # Multi-object test scenes
-├── experiments/                        # Cleanly Structured Evaluation Scripts
+├── experiments/                        # Structured evaluation scripts
 │   ├── exp1_faithfulness.py            # Faithfulness swapping on wolves (Fig. 4)
 │   ├── exp2_interpretability.py        # Spider interpretability benchmark (Fig. 6)
 │   ├── exp2_trains_interpretability.py # Train interpretability benchmark (Fig. 7)
@@ -245,10 +194,10 @@ PRISMX/
 │   ├── eval_fidelity_comparison.py     # Side-by-side 3-case fidelity breakdown
 │   ├── eval_multidomain_improvements.py# Multi-domain tests (vehicles, food, clutter)
 │   └── eval_wolf_difference_revealed.py# Higher PCs residual energy heatmap
-├── improvements/                       # Novel Algorithmic Solutions
+├── improvements/                       # Proposed algorithmic solutions
 │   ├── imp1_resolve_3pca_bottleneck.py # High-Variance Manifold & Spectral Bands
 │   └── imp2_class_attentive_grad_prism.py # Dual Spatial-Channel Grad-PRISM & cPRISM
-├── outputs/                            # All Publication-Quality Generated Figures
+├── outputs/                            # Publication-quality generated figures
 │   └── experiment_metadata.json        # Machine-readable experiment provenance log
 ├── src/                                # Core Engine
 │   └── torchprism/                     # Modular PyTorch PRISM package
@@ -309,9 +258,7 @@ python custom_test_suite/run_all_custom.py
 
 ---
 
-## Identification of Modified and New Files (Source Code Breakdown)
-
-For academic evaluation, here is the transparent breakdown of all original, modified, and newly created files in this repository:
+## Identification of Modified and New Files
 
 | File / Component | Category | Purpose and Exact Code Modifications |
 | :--- | :---: | :--- |
